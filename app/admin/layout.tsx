@@ -9,19 +9,18 @@ import { ReactNode } from "react"
 import {
   LayoutDashboard,
   Users,
-  UserPlus,
   Calendar,
   BarChart3,
   Clock,
-  FolderKanban,
-  DollarSign,
-  Briefcase,
+  MapPin,
+  Settings as SettingsIcon,
+  HelpCircle,
   CheckCircle,
 } from "lucide-react"
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const [role, setRole] = useState<'admin' | 'team_lead' | 'employee' | 'project_manager' | null>(null)
+  const [role, setRole] = useState<'admin' | 'manager' | 'employee' | null>(null)
   const [isImpersonating, setIsImpersonating] = useState(false)
 
   useEffect(() => {
@@ -33,21 +32,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const links = useMemo(() => {
     const base = [
       { href: "/admin/dashboard", label: "Dashboard", icon: <LayoutDashboard /> },
-      { href: "/admin/employees", label: "Agents", icon: <Users /> },
-      { href: "/admin/teams", label: "Teams", icon: <FolderKanban /> },
-      { href: "/admin/team-leads", label: "Team Leads", icon: <UserPlus /> },
-      { href: "/admin/projects", label: "Projects", icon: <Briefcase /> },
-      { href: "/admin/scheduling", label: "Scheduling", icon: <Calendar /> },
-      { href: "/admin/shift-approvals", label: "Shift Approvals", icon: <CheckCircle /> },
+      { href: "/admin/scheduling", label: "Rota", icon: <Calendar /> },
+      { href: "/admin/employees", label: "Employees", icon: <Users /> },
+      { href: "/admin/timesheet", label: "Timesheets", icon: <Clock /> },
+      { href: "/admin/shift-approvals", label: "Approvals", icon: <CheckCircle /> },
       { href: "/admin/reports", label: "Reports", icon: <BarChart3 /> },
-      { href: "/admin/timesheet", label: "Timesheet", icon: <Clock /> },
-      { href: "/admin/onboarding", label: "Onboarding", icon: <Users /> },
-      { href: "/admin/payroll", label: "Payroll", icon: <DollarSign /> },
+      { href: "/admin/leave", label: "Leave", icon: <Calendar /> },
+      { href: "/admin/locations", label: "Locations", icon: <MapPin /> },
+      { href: "/admin/settings", label: "Settings", icon: <SettingsIcon /> },
+      { href: "/admin/help", label: "Help / Support", icon: <HelpCircle /> },
     ]
-    if (role === 'team_lead') {
-      // Hide admin-only sections for team leads
-      return base.filter(l => !["Employees", "Reports", "Onboarding"].includes(l.label))
-    }
     return base
   }, [role])
 

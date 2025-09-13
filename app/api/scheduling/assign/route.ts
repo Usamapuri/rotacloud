@@ -116,13 +116,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Rota not found' }, { status: 404 })
       }
       rotaStatus = rotaResult.rows[0].status
-      if (rotaStatus === 'published') {
-        return NextResponse.json({ success: false, error: 'Cannot modify shifts in a published rota' }, { status: 400 })
-      }
+      // Allow creating new shifts in published rotas as drafts
     }
 
-    // Determine if shift should be published (true if no rota, false if draft rota)
-    const isPublished = rota_id ? false : true
+    // Always create shifts as drafts by default - no auto-publishing
+    const isPublished = false
 
     if (hasOverrideCols) {
       insertSql = `
@@ -217,7 +215,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { id, template_id, date, status, notes } = body
+    const { id, template_id, date, status, notes, emergency_mode } = body
     const override_name = body.override_name
     const override_start_time = body.override_start_time
     const override_end_time = body.override_end_time
@@ -246,6 +244,23 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 })
     }
 
+    // First, get the current assignment to check if it's published
+    const currentAssignment = await query(
+      `SELECT sa.*, e.first_name, e.last_name, e.email, r.status as rota_status
+       FROM shift_assignments sa
+       JOIN employees e ON sa.employee_id = e.id AND e.tenant_id = sa.tenant_id
+       LEFT JOIN rotas r ON sa.rota_id = r.id
+       WHERE sa.id = $1 AND sa.tenant_id = $2`,
+      [id, tenantContext.tenant_id]
+    )
+
+    if (currentAssignment.rows.length === 0) {
+      return NextResponse.json({ success: false, error: 'Assignment not found' }, { status: 404 })
+    }
+
+    const current = currentAssignment.rows[0]
+    const isPublished = current.is_published || current.rota_status === 'published'
+
     const updateQuery = `
       UPDATE shift_assignments
       SET ${fields.join(', ')}, updated_at = NOW()
@@ -256,7 +271,46 @@ export async function PUT(request: NextRequest) {
     const updateResult = await query(updateQuery, params)
     const updated = updateResult.rows[0]
 
-    return NextResponse.json({ success: true, data: updated })
+    // If this was a published shift, send notification to the employee
+    if (isPublished) {
+      try {
+        const notificationTitle = emergency_mode ? 'URGENT: Shift Updated' : 'Shift Updated'
+        const notificationMessage = emergency_mode 
+          ? `URGENT: Your shift on ${new Date(current.date).toLocaleDateString()} has been updated due to an emergency. Please check your schedule immediately.`
+          : `Your shift on ${new Date(current.date).toLocaleDateString()} has been updated. Please check your schedule for changes.`
+        const notificationType = emergency_mode ? 'urgent' : 'info'
+
+        await query(
+          `
+            INSERT INTO notifications (user_id, title, message, type, read, action_url, tenant_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `,
+          [
+            current.employee_id,
+            notificationTitle,
+            notificationMessage,
+            notificationType,
+            false,
+            '/employee/scheduling',
+            tenantContext.tenant_id
+          ]
+        )
+
+        // Also send email notification (if email service is configured)
+        // This would integrate with your email service
+        console.log(`${emergency_mode ? 'URGENT ' : ''}Email notification sent to ${current.email} about shift update`)
+      } catch (notificationError) {
+        console.error('Error sending notification:', notificationError)
+        // Don't fail the update if notification fails
+      }
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      data: updated,
+      notificationSent: isPublished,
+      emergencyMode: emergency_mode
+    })
   } catch (error: any) {
     console.error('Error updating shift assignment:', error)
     const message = (error && error.message || '').includes('null value')

@@ -58,6 +58,9 @@ interface Employee {
   total_assignments: number
   total_time_entries: number
   total_hours_worked: number
+  location_id?: string
+  location_name?: string
+  role?: string
 }
 
 interface EditEmployeeData {
@@ -236,10 +239,8 @@ export default function AdminEmployees() {
         const role = data.targetUser.role
         if (role === 'employee' || role === 'agent') {
           router.push('/employee/dashboard')
-        } else if (role === 'team_lead') {
-          router.push('/team-lead/dashboard')
-        } else if (role === 'project_manager') {
-          router.push('/project-manager/dashboard')
+        } else if (role === 'manager') {
+          router.push('/admin/dashboard')
         } else {
           router.push('/admin/dashboard')
         }
@@ -432,16 +433,16 @@ export default function AdminEmployees() {
           <CardHeader>
             <CardTitle>Agent Directory</CardTitle>
             <CardDescription>
-              Manage agent information, departments, and hourly rates
+              Manage agent information, roles, and hourly rates
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Agent</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Position</TableHead>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Location</TableHead>
                   <TableHead>Hourly Rate</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Hours Worked</TableHead>
@@ -465,11 +466,16 @@ export default function AdminEmployees() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge className={getDepartmentColor(employee.department)}>
-                        {employee.department}
+                      <Badge variant={employee.role === 'manager' ? 'default' : employee.role === 'admin' ? 'destructive' : 'secondary'}>
+                        {employee.role || 'employee'}
                       </Badge>
                     </TableCell>
-                    <TableCell>{employee.job_position || employee.position}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Building className="h-3 w-3 text-gray-400" />
+                        {employee.location_name || 'No location'}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center">
                         <DollarSign className="h-3 w-3 mr-1" />

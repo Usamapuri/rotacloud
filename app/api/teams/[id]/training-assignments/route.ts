@@ -50,7 +50,7 @@ export async function POST(
     }
 
     // ensure employee is in team
-          const emp = await query('SELECT id FROM employees_new WHERE id = $1 AND team_id = $2', [employee_id, teamId])
+          const emp = await query('SELECT id FROM employees WHERE id = $1 AND team_id = $2', [employee_id, teamId])
     if (emp.rows.length === 0) return NextResponse.json({ error: 'Employee not in team' }, { status: 400 })
 
     const result = await query(

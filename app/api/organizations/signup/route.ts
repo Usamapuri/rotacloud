@@ -110,6 +110,28 @@ export async function POST(request: NextRequest) {
 
       const admin = adminResult.rows[0]
 
+      // Create default location for the organization
+      const defaultLocationResult = await client.query(`
+        INSERT INTO locations (tenant_id, organization_id, name, description, is_active, created_by)
+        VALUES ($1, $2, $3, $4, true, $5)
+        RETURNING id, name
+      `, [
+        tenantId,
+        organization.id,
+        body.organizationName ? `${body.organizationName} Headquarters` : 'Main Office',
+        'Default location created during organization setup',
+        admin.id
+      ])
+
+      const defaultLocation = defaultLocationResult.rows[0]
+
+      // Update admin employee with default location
+      await client.query(`
+        UPDATE employees 
+        SET location_id = $1, updated_at = NOW()
+        WHERE id = $2
+      `, [defaultLocation.id, admin.id])
+
       await client.query(`
         INSERT INTO organization_admins (organization_id, user_id, role, permissions)
         VALUES ($1, $2, 'owner', $3)

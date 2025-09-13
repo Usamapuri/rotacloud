@@ -13,7 +13,7 @@ export async function GET(
     let email = id
     if (isUuid) {
       const employeeResult = await query(`
-        SELECT email FROM employees_new WHERE id = $1
+        SELECT email FROM employees WHERE id = $1
       `, [id])
       
       if (employeeResult.rows.length === 0) {

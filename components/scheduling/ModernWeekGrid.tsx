@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import ModernShiftCell from './ModernShiftCell'
+import SelectivePublishModal from './SelectivePublishModal'
 import { toast } from 'sonner'
 
 interface Employee {
@@ -51,6 +52,7 @@ interface ModernWeekGridProps {
   rotas?: any[]
   onCreateRota?: (name: string, weekStart: string) => void
   onPublishRota?: (rotaId: string) => void
+  onPublishShifts?: () => void
   onSelectRota?: (rotaId: string | null) => void
 }
 
@@ -70,6 +72,7 @@ export default function ModernWeekGrid({
   rotas = [],
   onCreateRota,
   onPublishRota,
+  onPublishShifts,
   onSelectRota
 }: ModernWeekGridProps) {
   const [weekStart, setWeekStart] = useState(new Date())
@@ -83,6 +86,14 @@ export default function ModernWeekGrid({
   const [showCreateRotaDialog, setShowCreateRotaDialog] = useState(false)
   const [newRotaName, setNewRotaName] = useState('')
   const [isCreatingRota, setIsCreatingRota] = useState(false)
+  const [showSelectivePublishModal, setShowSelectivePublishModal] = useState(false)
+
+  // Calculate draft count
+  const draftCount = employees.reduce((count, employee) => {
+    return count + Object.values(employee.assignments || {}).reduce((dayCount, dayAssignments) => {
+      return dayCount + (dayAssignments as any[]).filter(assignment => !assignment.is_published).length
+    }, 0)
+  }, 0)
   const [isPublishingRota, setIsPublishingRota] = useState(false)
   const dragTimeoutRef = useRef<NodeJS.Timeout>()
 
@@ -462,6 +473,23 @@ export default function ModernWeekGrid({
                 </>
               ) : (
                 <>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      size="sm" 
+                      onClick={() => setShowSelectivePublishModal(true)}
+                      className="bg-green-600 hover:bg-green-700"
+                      disabled={draftCount === 0}
+                    >
+                      <Send className="h-4 w-4 mr-1" />
+                      Publish Shifts
+                    </Button>
+                    {draftCount > 0 && (
+                      <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 rounded-md text-xs">
+                        <div className="w-2 h-2 rounded-full bg-yellow-400"></div>
+                        {draftCount} draft{draftCount !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
                   <Button 
                     size="sm" 
                     onClick={() => setShowCreateRotaDialog(true)}
@@ -674,6 +702,20 @@ export default function ModernWeekGrid({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Selective Publish Modal */}
+    <SelectivePublishModal
+      isOpen={showSelectivePublishModal}
+      onClose={() => setShowSelectivePublishModal(false)}
+      employees={employees}
+      weekDays={weekDays}
+      onPublishComplete={() => {
+        // Refresh the data after publishing
+        if (onAssignmentCreated) {
+          onAssignmentCreated()
+        }
+      }}
+    />
     </>
   )
 }

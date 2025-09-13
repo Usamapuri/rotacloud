@@ -4,7 +4,7 @@ import { query } from "@/lib/database"
 export async function GET() {
   try {
     const employeesResult = await query(`
-      SELECT * FROM employees_new
+      SELECT * FROM employees
       WHERE is_active = true
       ORDER BY created_at DESC
     `)

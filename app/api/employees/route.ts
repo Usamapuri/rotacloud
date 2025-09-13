@@ -7,23 +7,56 @@ import bcrypt from 'bcryptjs'
 
 // Validation schemas
 const createEmployeeSchema = z.object({
-  employee_code: z.string().min(1, 'Employee code is required'),
+  employee_code: z.string().optional(),
   first_name: z.string().min(1, 'First name is required'),
   last_name: z.string().min(1, 'Last name is required'),
   email: z.string().email('Invalid email address'),
-  department: z.string().min(1, 'Department is required'),
-  job_position: z.string().min(1, 'Job position is required'),
-  role: z.enum(['admin', 'manager', 'lead', 'employee']).default('employee'),
+  department: z.string().optional(),
+  job_position: z.string().optional(),
+  role: z.enum(['admin','manager','agent']).default('agent'),
   hire_date: z.string().optional(),
   manager_id: z.string().uuid().optional(),
   team_id: z.string().uuid().optional(),
   hourly_rate: z.number().positive().optional(),
   max_hours_per_week: z.number().positive().optional(),
   is_active: z.boolean().default(true),
+  address: z.string().optional(),
+  emergency_contact: z.string().optional(),
+  emergency_phone: z.string().optional(),
+  notes: z.string().optional(),
+  location_id: z.string().uuid().optional().or(z.literal("")),
   password: z.string().optional()
 })
 
-const updateEmployeeSchema = createEmployeeSchema.partial()
+const updateEmployeeSchema = z.object({
+  employee_code: z.string().nullable().optional().transform(val => val === null ? undefined : val),
+  first_name: z.string().min(1).nullable().optional().transform(val => val === null ? undefined : val),
+  last_name: z.string().min(1).nullable().optional().transform(val => val === null ? undefined : val),
+  email: z.string().email().nullable().optional().transform(val => val === null ? undefined : val),
+  department: z.string().nullable().optional().transform(val => val === null ? undefined : val),
+  job_position: z.string().nullable().optional().transform(val => val === null ? undefined : val),
+  role: z.enum(['admin','manager','agent']).optional(),
+  hire_date: z.string().nullable().optional().transform(val => val === null ? undefined : val),
+  manager_id: z.string().uuid().nullable().optional().transform(val => val === null ? undefined : val),
+  team_id: z.string().uuid().nullable().optional().transform(val => val === null ? undefined : val),
+  hourly_rate: z.union([z.string(), z.number()]).transform((val) => {
+    if (val === null || val === undefined || val === '') return undefined
+    const num = typeof val === 'string' ? parseFloat(val) : val
+    return isNaN(num) ? undefined : num
+  }).pipe(z.number().positive()).optional(),
+  max_hours_per_week: z.union([z.string(), z.number()]).transform((val) => {
+    if (val === null || val === undefined || val === '') return undefined
+    const num = typeof val === 'string' ? parseFloat(val) : val
+    return isNaN(num) ? undefined : num
+  }).pipe(z.number().positive()).optional(),
+  is_active: z.boolean().optional(),
+  address: z.string().nullable().optional().transform(val => val === null ? undefined : val),
+  emergency_contact: z.string().nullable().optional().transform(val => val === null ? undefined : val),
+  emergency_phone: z.string().nullable().optional().transform(val => val === null ? undefined : val),
+  notes: z.string().nullable().optional().transform(val => val === null ? undefined : val),
+  location_id: z.string().uuid().nullable().optional().transform(val => val === null ? undefined : val),
+  password: z.string().nullable().optional().transform(val => val === null ? undefined : val)
+})
 
 /**
  * GET /api/employees
@@ -81,14 +114,17 @@ export async function GET(request: NextRequest) {
         e.is_active,
         e.is_online,
         e.last_online,
+        e.location_id,
         t.name as team_name,
         m.first_name || ' ' || m.last_name as manager_name,
+        l.name as location_name,
         COUNT(sa.id) as total_assignments,
         COUNT(te.id) as total_time_entries,
         COALESCE(SUM(te.total_hours), 0) as total_hours_worked
       FROM employees e
       LEFT JOIN teams t ON e.team_id = t.id AND t.tenant_id = e.tenant_id
       LEFT JOIN employees m ON e.manager_id = m.id AND m.tenant_id = e.tenant_id
+      LEFT JOIN locations l ON e.location_id = l.id AND l.tenant_id = e.tenant_id
       LEFT JOIN shift_assignments sa ON e.id = sa.employee_id AND sa.tenant_id = e.tenant_id
       LEFT JOIN time_entries te ON e.id = te.employee_id AND te.tenant_id = e.tenant_id
       WHERE e.tenant_id = $1
@@ -124,7 +160,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Add grouping and ordering
-    queryText += ` GROUP BY e.id, e.employee_code, e.first_name, e.last_name, e.email, e.department, e.job_position, e.role, e.hire_date, e.manager_id, e.team_id, e.hourly_rate, e.max_hours_per_week, e.is_active, e.is_online, e.last_online, t.name, m.first_name, m.last_name`
+    queryText += ` GROUP BY e.id, e.employee_code, e.first_name, e.last_name, e.email, e.department, e.job_position, e.role, e.hire_date, e.manager_id, e.team_id, e.hourly_rate, e.max_hours_per_week, e.is_active, e.is_online, e.last_online, e.location_id, t.name, m.first_name, m.last_name, l.name`
     queryText += ` ORDER BY e.first_name, e.last_name`
 
     // Get total count with tenant filtering
@@ -183,7 +219,68 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+    
+    // Convert empty string to undefined for location_id to handle form submissions
+    if (body.location_id === "") {
+      body.location_id = undefined
+    }
+    
     const validatedData = createEmployeeSchema.parse(body)
+
+    // Auto-generate employee_code if missing: EMP+sequence
+    let employeeCode = validatedData.employee_code
+    if (!employeeCode) {
+      // Get the highest numeric sequence from existing EMP codes
+      const seqRes = await query(`
+        SELECT COALESCE(MAX(
+          CASE 
+            WHEN employee_code LIKE 'EMP%' AND SUBSTRING(employee_code, 4) ~ '^[0-9]+$'
+            THEN CAST(SUBSTRING(employee_code, 4) AS INTEGER)
+            ELSE 0
+          END
+        ), 0) + 1 AS next_seq 
+        FROM employees 
+        WHERE tenant_id = $1
+      `, [tenantContext.tenant_id])
+      
+      const nextSeq = seqRes.rows[0]?.next_seq || 1
+      employeeCode = `EMP${String(nextSeq).padStart(4, '0')}`
+    }
+
+    // Get available locations for validation
+    const locationsRes = await query(`
+      SELECT id FROM locations 
+      WHERE tenant_id = $1 AND is_active = true 
+      ORDER BY created_at ASC
+    `, [tenantContext.tenant_id])
+    
+    const availableLocations = locationsRes.rows
+    let locationId = validatedData.location_id
+    
+    // If no location specified, check if we can auto-assign
+    if (!locationId) {
+      if (availableLocations.length === 1) {
+        // Only one location exists, auto-assign it
+        locationId = availableLocations[0].id
+      } else if (availableLocations.length > 1) {
+        // Multiple locations exist, require admin to select
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Location selection required when multiple locations exist',
+          available_locations: availableLocations.map(l => l.id)
+        }, { status: 400 })
+      }
+      // No locations exist - locationId remains null
+    } else {
+      // Validate that the selected location exists and belongs to the tenant
+      const validLocation = availableLocations.find(l => l.id === locationId)
+      if (!validLocation) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Invalid location selected' 
+        }, { status: 400 })
+      }
+    }
 
     // Add tenant_id to the employee data
     const employeeData = {
@@ -195,7 +292,7 @@ export async function POST(request: NextRequest) {
     // Check if employee_code already exists within this tenant
     const existingEmployeeResult = await query(
       'SELECT id FROM employees WHERE employee_code = $1 AND tenant_id = $2',
-      [validatedData.employee_code, tenantContext.tenant_id]
+      [employeeCode, tenantContext.tenant_id]
     )
 
     if (existingEmployeeResult.rows.length > 0) {
@@ -225,28 +322,40 @@ export async function POST(request: NextRequest) {
     const insertQuery = `
       INSERT INTO employees (
         employee_code, first_name, last_name, email, department, job_position,
-        role, hire_date, manager_id, team_id, hourly_rate, max_hours_per_week, is_active, password_hash, tenant_id, organization_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        role, hire_date, manager_id, team_id, hourly_rate, max_hours_per_week,
+        is_active, password_hash, tenant_id, organization_id,
+        phone, address, emergency_contact, emergency_phone, notes, location_id
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+        $13,$14,$15,$16,
+        $17,$18,$19,$20,$21,$22
+      )
       RETURNING *
     `
 
     const insertResult = await query(insertQuery, [
-      validatedData.employee_code,
+      employeeCode,
       validatedData.first_name,
       validatedData.last_name,
       validatedData.email,
-      validatedData.department,
-      validatedData.job_position,
+      validatedData.department || null,
+      validatedData.job_position || null,
       validatedData.role,
       validatedData.hire_date || new Date().toISOString().split('T')[0],
-      validatedData.manager_id,
-      validatedData.team_id,
-      validatedData.hourly_rate,
-      validatedData.max_hours_per_week,
+      validatedData.manager_id || null,
+      validatedData.team_id || null,
+      validatedData.hourly_rate || null,
+      validatedData.max_hours_per_week || 40,
       validatedData.is_active,
       passwordHash,
       tenantContext.tenant_id,
-      tenantContext.organization_id
+      tenantContext.organization_id,
+      validatedData.phone || null,
+      validatedData.address || null,
+      validatedData.emergency_contact || null,
+      validatedData.emergency_phone || null,
+      validatedData.notes || null,
+      locationId
     ])
 
     const newEmployee = insertResult.rows[0]
@@ -289,6 +398,11 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
     }
 
+    const tenantContext = await getTenantContext(user.id)
+    if (!tenantContext) {
+      return NextResponse.json({ error: 'No tenant context found' }, { status: 403 })
+    }
+
     const body = await request.json()
     const { id, ...updateData } = body
 
@@ -303,14 +417,14 @@ export async function PUT(request: NextRequest) {
     // Inline update implementation to avoid missing helper
     const fields = Object.keys(validatedData)
     const values = Object.values(validatedData)
-    const setClauses = fields.map((field, idx) => `${field} = $${idx + 2}`).join(', ')
+    const setClauses = fields.map((field, idx) => `${field} = $${idx + 3}`).join(', ')
     const updateQuery = `
       UPDATE employees
       SET ${setClauses}, updated_at = NOW()
-      WHERE id = $1::uuid
+      WHERE id = $1::uuid AND tenant_id = $2
       RETURNING *
     `
-    const updateResult = await query(updateQuery, [id, ...values])
+    const updateResult = await query(updateQuery, [id, tenantContext.tenant_id, ...values])
     const employee = updateResult.rows[0]
 
     return NextResponse.json({ 

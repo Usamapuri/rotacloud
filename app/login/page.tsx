@@ -28,6 +28,9 @@ export default function UnifiedLogin() {
           case 'admin':
             router.push("/admin/dashboard")
             break
+          case 'manager':
+            router.push("/manager/dashboard")
+            break
           case 'project_manager':
             router.push("/project-manager/dashboard")
             break

@@ -41,7 +41,7 @@ export async function POST(
 
     // Check if user is the employee assigned to this shift
     const employeeResult = await query(
-      `SELECT id FROM employees_new WHERE user_id = $1 AND tenant_id = $2`,
+      `SELECT id FROM employees WHERE id = $1 AND tenant_id = $2`,
       [user.id, tenantContext.tenant_id]
     )
 

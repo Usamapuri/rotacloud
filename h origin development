@@ -1,0 +1,28 @@
+[1mdiff --git a/app/api/employees/route.ts b/app/api/employees/route.ts[m
+[1mindex 79667c9..6249c80 100644[m
+[1m--- a/app/api/employees/route.ts[m
+[1m+++ b/app/api/employees/route.ts[m
+[36m@@ -199,8 +199,21 @@[m [mexport async function POST(request: NextRequest) {[m
+     // Auto-generate employee_code if missing: EMP+sequence[m
+     let employeeCode = validatedData.employee_code[m
+     if (!employeeCode) {[m
+[31m-      const seqRes = await query(`SELECT 'EMP' || LPAD(CAST(COALESCE(MAX(CAST(SUBSTRING(employee_code, 4) AS INTEGER)), 0) + 1 AS TEXT), 4, '0') AS next FROM employees WHERE tenant_id = $1`, [tenantContext.tenant_id])[m
+[31m-      employeeCode = seqRes.rows[0]?.next || `EMP${Date.now().toString().slice(-6)}`[m
+[32m+[m[32m      // Get the highest numeric sequence from existing EMP codes[m
+[32m+[m[32m      const seqRes = await query(`[m
+[32m+[m[32m        SELECT COALESCE(MAX([m
+[32m+[m[32m          CASE[m[41m [m
+[32m+[m[32m            WHEN employee_code LIKE 'EMP%' AND SUBSTRING(employee_code, 4) ~ '^[0-9]+$'[m
+[32m+[m[32m            THEN CAST(SUBSTRING(employee_code, 4) AS INTEGER)[m
+[32m+[m[32m            ELSE 0[m
+[32m+[m[32m          END[m
+[32m+[m[32m        ), 0) + 1 AS next_seq[m[41m [m
+[32m+[m[32m        FROM employees[m[41m [m
+[32m+[m[32m        WHERE tenant_id = $1[m
+[32m+[m[32m      `, [tenantContext.tenant_id])[m
+[32m+[m[41m      [m
+[32m+[m[32m      const nextSeq = seqRes.rows[0]?.next_seq || 1[m
+[32m+[m[32m      employeeCode = `EMP${String(nextSeq).padStart(4, '0')}`[m
+     }[m
+ [m
+     // Get available locations for validation[m

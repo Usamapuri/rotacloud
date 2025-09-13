@@ -18,8 +18,6 @@ interface EmployeeFormData {
   first_name: string
   last_name: string
   email: string
-  department: string
-  job_position: string
   role: string
   hire_date: string
   hourly_rate: number
@@ -28,42 +26,13 @@ interface EmployeeFormData {
   address?: string
   emergency_contact?: string
   emergency_phone?: string
+  location_id?: string
   notes?: string
 }
 
-const departments = [
-  "Engineering",
-  "Sales",
-  "Marketing",
-  "Human Resources",
-  "Finance",
-  "Operations",
-  "Customer Support",
-  "IT",
-  "Administration"
-]
+// Locations will be loaded from /api/locations
 
-const positions = [
-  "Manager",
-  "Senior Developer",
-  "Developer",
-  "Sales Representative",
-  "Marketing Specialist",
-  "HR Coordinator",
-  "Accountant",
-  "Operations Manager",
-  "Customer Support Representative",
-  "IT Support",
-  "Administrative Assistant",
-  "Intern"
-]
-
-const roles = [
-  "employee",
-  "lead", 
-  "manager",
-  "admin"
-]
+const roles = ["agent","manager","admin"]
 
 export default function NewEmployee() {
   const [formData, setFormData] = useState<EmployeeFormData>({
@@ -73,7 +42,7 @@ export default function NewEmployee() {
     email: "",
     department: "",
     job_position: "",
-    role: "employee",
+    role: "agent",
     hire_date: new Date().toISOString().split('T')[0],
     hourly_rate: 0,
     max_hours_per_week: 40,
@@ -81,6 +50,7 @@ export default function NewEmployee() {
     address: "",
     emergency_contact: "",
     emergency_phone: "",
+    location_id: "",
     notes: ""
   })
   const [isLoading, setIsLoading] = useState(false)
@@ -103,6 +73,22 @@ export default function NewEmployee() {
     }))
   }
 
+  const [locations, setLocations] = useState<{id:string,name:string}[]>([])
+
+  useEffect(() => {
+    const loadLocations = async () => {
+      const user = AuthService.getCurrentUser()
+      const headers: Record<string,string> = {}
+      if (user?.id) headers['authorization'] = `Bearer ${user.id}`
+      const res = await fetch('/api/locations', { headers })
+      if (res.ok) {
+        const data = await res.json()
+        setLocations((data.data||[]) as any)
+      }
+    }
+    loadLocations()
+  }, [])
+
   const generateEmployeeId = () => {
     const timestamp = Date.now().toString().slice(-6)
     const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
@@ -117,10 +103,6 @@ export default function NewEmployee() {
   }
 
   const validateForm = (): boolean => {
-    if (!formData.employee_code.trim()) {
-      toast.error("Employee ID is required")
-      return false
-    }
     if (!formData.first_name.trim()) {
       toast.error("First name is required")
       return false
@@ -133,14 +115,6 @@ export default function NewEmployee() {
       toast.error("Email is required")
       return false
     }
-    if (!formData.department) {
-      toast.error("Department is required")
-      return false
-    }
-    if (!formData.job_position) {
-      toast.error("Position is required")
-      return false
-    }
     if (!formData.role) {
       toast.error("Role is required")
       return false
@@ -151,6 +125,11 @@ export default function NewEmployee() {
     }
     if (formData.hourly_rate <= 0) {
       toast.error("Hourly rate must be greater than 0")
+      return false
+    }
+    // Require location selection if multiple locations exist
+    if (locations.length > 1 && !formData.location_id) {
+      toast.error("Location selection is required when multiple locations exist")
       return false
     }
     return true
@@ -181,6 +160,8 @@ export default function NewEmployee() {
         headers,
         body: JSON.stringify({
           ...formData,
+          employee_code: formData.employee_code.trim() || undefined, // Only send if provided
+          location_id: formData.location_id || undefined, // Convert empty string to undefined
           is_active: true,
           password: 'password123'
         }),
@@ -260,26 +241,7 @@ export default function NewEmployee() {
               {/* Basic Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                                    <div>
-                    <Label htmlFor="employee_code">Agent ID *</Label>
-                    <div className="flex space-x-2">
-                      <Input
-                        id="employee_code"
-                        value={formData.employee_code}
-                        onChange={(e) => handleInputChange('employee_code', e.target.value)}
-                        placeholder="EMP001"
-                        required
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleGenerateId}
-                        className="whitespace-nowrap"
-                      >
-                        Generate
-                      </Button>
-                    </div>
-                  </div>
+                  {/* Agent ID removed - auto generated server-side */}
 
                   <div>
                     <Label htmlFor="first_name">First Name *</Label>
@@ -327,43 +289,7 @@ export default function NewEmployee() {
                 </div>
 
                 <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="department">Department *</Label>
-                    <Select
-                      value={formData.department}
-                      onValueChange={(value) => handleInputChange('department', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {departments.map((dept) => (
-                          <SelectItem key={dept} value={dept}>
-                            {dept}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="job_position">Position *</Label>
-                    <Select
-                      value={formData.job_position}
-                      onValueChange={(value) => handleInputChange('job_position', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select position" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {positions.map((pos) => (
-                          <SelectItem key={pos} value={pos}>
-                            {pos}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Department and Position removed */}
 
                   <div>
                     <Label htmlFor="role">Role *</Label>
@@ -375,18 +301,43 @@ export default function NewEmployee() {
                         <SelectValue placeholder="Select role" />
                       </SelectTrigger>
                       <SelectContent>
-                                                                         {roles.map((role) => (
+                        {roles.map((role) => (
                           <SelectItem key={role} value={role}>
-                            {role === 'employee' ? 'Agent' : 
-                             role === 'lead' ? 'Team Lead' :
-                             role === 'manager' ? 'Manager' :
-                             role === 'admin' ? 'Administrator' :
-                             role.charAt(0).toUpperCase() + role.slice(1).replace('_', ' ')}
+                            {role === 'agent' ? 'Agent' : role === 'manager' ? 'Manager' : 'Administrator'}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* Location Selection - only show if multiple locations exist */}
+                  {locations.length > 1 && (
+                    <div>
+                      <Label htmlFor="location_id">Location *</Label>
+                      <Select
+                        value={formData.location_id}
+                        onValueChange={(value) => handleInputChange('location_id', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {locations.map((location) => (
+                            <SelectItem key={location.id} value={location.id}>
+                              {location.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Show message if only one location exists */}
+                  {locations.length === 1 && (
+                    <div className="text-sm text-gray-600">
+                      Employee will be assigned to: <strong>{locations[0].name}</strong>
+                    </div>
+                  )}
 
                   <div>
                     <Label htmlFor="hire_date">Hire Date *</Label>

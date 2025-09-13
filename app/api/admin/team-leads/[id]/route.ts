@@ -18,10 +18,10 @@ export async function GET(
 				e.*,
 				t.name as team_name,
 				t.id as team_id,
-				(SELECT COUNT(*) FROM employees_new m WHERE m.team_id = t.id AND m.is_active = true) as member_count,
+				(SELECT COUNT(*) FROM employees m WHERE m.team_id = t.id AND m.is_active = true) as member_count,
 				AVG(pm.quality_score) as quality_score,
 				AVG(pm.productivity_score) as performance_score
-			 FROM employees_new e
+			 FROM employees e
 			 LEFT JOIN teams t ON e.team_id = t.id
 			 LEFT JOIN performance_metrics pm ON e.id = pm.employee_id
 			 WHERE e.id = $1 AND e.role = 'team_lead'

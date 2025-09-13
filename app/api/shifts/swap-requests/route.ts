@@ -76,9 +76,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const validatedData = createShiftSwapSchema.parse(body)
 
-    // Check if requester exists and is active in tenant
+    // Check if requester exists and is active in tenant (and get location)
     const requesterResult = await query(
-      'SELECT id FROM employees WHERE id = $1 AND is_active = true AND tenant_id = $2',
+      'SELECT id, location_id FROM employees WHERE id = $1 AND is_active = true AND tenant_id = $2',
       [validatedData.requester_id, tenantContext.tenant_id]
     )
 
@@ -86,9 +86,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Requester not found or inactive' }, { status: 404 })
     }
 
-    // Check if target exists and is active in tenant
+    // Check if target exists and is active in tenant (and get location)
     const targetResult = await query(
-      'SELECT id FROM employees WHERE id = $1 AND is_active = true AND tenant_id = $2',
+      'SELECT id, location_id FROM employees WHERE id = $1 AND is_active = true AND tenant_id = $2',
       [validatedData.target_id, tenantContext.tenant_id]
     )
 
@@ -114,6 +114,13 @@ export async function POST(request: NextRequest) {
 
     if (requestedShiftResult.rows.length === 0) {
       return NextResponse.json({ error: 'Requested shift assignment not found' }, { status: 404 })
+    }
+
+    // Eligibility: restrict by location only
+    const requesterLocation = requesterResult.rows[0].location_id
+    const targetLocation = targetResult.rows[0].location_id
+    if (requesterLocation && targetLocation && requesterLocation !== targetLocation) {
+      return NextResponse.json({ error: 'Employees are not in the same location and cannot swap' }, { status: 400 })
     }
 
     // Check for existing swap request in tenant

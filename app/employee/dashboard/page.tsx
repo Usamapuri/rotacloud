@@ -110,6 +110,25 @@ interface LeaveRequest {
   updated_at: string
 }
 
+interface SwapRequest {
+  id: string
+  requester_id: string
+  target_id: string
+  requester_shift_id: string
+  target_shift_id: string
+  status: 'pending' | 'accepted' | 'declined' | 'approved' | 'rejected'
+  requester_name: string
+  target_name: string
+  requester_shift_date: string
+  requester_shift_start: string
+  requester_shift_end: string
+  target_shift_date: string
+  target_shift_start: string
+  target_shift_end: string
+  created_at: string
+  updated_at: string
+}
+
 // Timer component for displaying elapsed time
 const TimerDisplay = ({ startTime, label, className = "", variant = "default" }: { 
   startTime: string, 
@@ -317,6 +336,10 @@ export default function EmployeeDashboard() {
     reason: ''
   })
   
+  // Swap request state
+  const [swapRequests, setSwapRequests] = useState<SwapRequest[]>([])
+  const [processingSwap, setProcessingSwap] = useState<string | null>(null)
+  
   const router = useRouter()
 
   useEffect(() => {
@@ -344,6 +367,7 @@ export default function EmployeeDashboard() {
       await loadTodayShifts(user.id)
       await loadWeeklyHours(user.id)
       await loadLeaveRequests(user.id)
+      await loadSwapRequests(user.id)
     } catch (error) {
       console.error('Error loading dashboard data:', error)
       toast.error('Failed to load dashboard data')
@@ -393,7 +417,7 @@ export default function EmployeeDashboard() {
     const today = new Date().toISOString().split('T')[0]
     try {
       const user = AuthService.getCurrentUser()
-      const res = await fetch(`/api/scheduling/week/${today}?employee_id=${userId}`, { headers: user?.id ? { authorization: `Bearer ${user.id}` } : {} })
+      const res = await fetch(`/api/scheduling/week/${today}?employee_id=${userId}&published_only=true`, { headers: user?.id ? { authorization: `Bearer ${user.id}` } : {} })
       if (!res.ok) {
         setTodayShifts([])
         return
@@ -453,15 +477,35 @@ export default function EmployeeDashboard() {
 
   const loadLeaveRequests = async (userId: string) => {
     try {
-      const response = await fetch(`/api/leave-requests?employee_id=${userId}`)
+      const user = AuthService.getCurrentUser()
+      const headers: Record<string, string> = {}
+      if (user?.id) headers['authorization'] = `Bearer ${user.id}`
+
+      const response = await fetch(`/api/leave-requests?employee_id=${userId}`, { headers })
       if (response.ok) {
         const data = await response.json()
         if (data.data) {
           setLeaveRequests(data.data)
         }
+      } else {
+        console.error('Failed to load leave requests:', response.status, response.statusText)
       }
     } catch (error) {
       console.error('Error loading leave requests:', error)
+    }
+  }
+
+  const loadSwapRequests = async (userId: string) => {
+    try {
+      const response = await fetch(`/api/employees/requests?employee_id=${userId}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.data) {
+          setSwapRequests(data.data)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading swap requests:', error)
     }
   }
 
@@ -682,11 +726,14 @@ export default function EmployeeDashboard() {
         reason: leaveForm.reason
       }
 
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (user?.id) headers['authorization'] = `Bearer ${user.id}`
+
       const response = await fetch('/api/leave-requests', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(requestData)
       })
 
@@ -714,6 +761,35 @@ export default function EmployeeDashboard() {
       toast.error('Failed to submit leave request')
     } finally {
       setSubmittingLeave(false)
+    }
+  }
+
+  const handleSwapRequestAction = async (requestId: string, action: 'accept' | 'decline') => {
+    try {
+      setProcessingSwap(requestId)
+      const user = AuthService.getCurrentUser()
+      if (!user) return
+
+      const response = await fetch(`/api/employees/requests/${requestId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action })
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        toast.success(`Swap request ${action}ed successfully`)
+        await loadSwapRequests(user.id)
+      } else {
+        toast.error(data.error || `Failed to ${action} swap request`)
+      }
+    } catch (error) {
+      console.error(`Error ${action}ing swap request:`, error)
+      toast.error(`Failed to ${action} swap request`)
+    } finally {
+      setProcessingSwap(null)
     }
   }
 
@@ -748,6 +824,23 @@ export default function EmployeeDashboard() {
         return <Badge variant="destructive">Denied</Badge>
       case 'cancelled':
         return <Badge variant="secondary">Cancelled</Badge>
+      default:
+        return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  const getSwapStatusBadge = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return <Badge variant="outline" className="text-yellow-600">Pending</Badge>
+      case 'accepted':
+        return <Badge variant="default" className="text-blue-600">Accepted</Badge>
+      case 'declined':
+        return <Badge variant="destructive">Declined</Badge>
+      case 'approved':
+        return <Badge variant="default" className="text-green-600">Approved</Badge>
+      case 'rejected':
+        return <Badge variant="destructive">Rejected</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -1045,7 +1138,7 @@ export default function EmployeeDashboard() {
                   <div className="flex justify-between items-center">
                     <h3 className="font-medium text-gray-900">Your Requests</h3>
                     <Button 
-                      onClick={() => toast.info('Leave request functionality coming soon!')}
+                      onClick={() => setShowLeaveDialog(true)}
                       size="sm"
                       className="flex items-center gap-2"
                     >
@@ -1098,6 +1191,100 @@ export default function EmployeeDashboard() {
                             <div className="mt-3">
                               <p className="font-medium text-gray-700">Admin Notes:</p>
                               <p className="text-gray-600">{request.admin_notes}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Swap Requests */}
+            <Card className="dashboard-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Shift Swap Requests
+                </CardTitle>
+                <CardDescription>
+                  Respond to shift swap requests from colleagues
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-medium text-gray-900">Action Required</h3>
+                    {swapRequests.filter(r => r.status === 'pending').length > 0 && (
+                      <Badge variant="destructive" className="animate-pulse">
+                        {swapRequests.filter(r => r.status === 'pending').length} pending
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  {swapRequests.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                      <p className="text-gray-500">No swap requests found</p>
+                      <p className="text-sm text-gray-400 mt-1">You'll see requests here when colleagues want to swap shifts</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {swapRequests.map((request) => (
+                        <div key={request.id} className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">
+                                {request.requester_name} wants to swap
+                              </span>
+                              {getSwapStatusBadge(request.status)}
+                            </div>
+                            <span className="text-sm text-gray-500">
+                              {new Date(request.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          
+                          <div className="grid md:grid-cols-2 gap-4 text-sm mb-4">
+                            <div className="bg-blue-50 p-3 rounded-lg">
+                              <p className="font-medium text-blue-900 mb-1">Their Shift:</p>
+                              <p className="text-blue-800">
+                                {new Date(request.requester_shift_date).toLocaleDateString()}
+                              </p>
+                              <p className="text-blue-700">
+                                {request.requester_shift_start} - {request.requester_shift_end}
+                              </p>
+                            </div>
+                            <div className="bg-green-50 p-3 rounded-lg">
+                              <p className="font-medium text-green-900 mb-1">Your Shift:</p>
+                              <p className="text-green-800">
+                                {new Date(request.target_shift_date).toLocaleDateString()}
+                              </p>
+                              <p className="text-green-700">
+                                {request.target_shift_start} - {request.target_shift_end}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {request.status === 'pending' && (
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={() => handleSwapRequestAction(request.id, 'accept')}
+                                disabled={processingSwap === request.id}
+                                size="sm"
+                                className="flex-1"
+                              >
+                                {processingSwap === request.id ? 'Processing...' : 'Accept'}
+                              </Button>
+                              <Button
+                                onClick={() => handleSwapRequestAction(request.id, 'decline')}
+                                disabled={processingSwap === request.id}
+                                variant="destructive"
+                                size="sm"
+                                className="flex-1"
+                              >
+                                {processingSwap === request.id ? 'Processing...' : 'Decline'}
+                              </Button>
                             </div>
                           )}
                         </div>

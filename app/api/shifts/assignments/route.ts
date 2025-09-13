@@ -121,11 +121,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Employee already has an assignment on this date' }, { status: 409 })
     }
 
-    // Create shift assignment in tenant
+    // Create shift assignment in tenant as draft
     const assignment = await query(
       `INSERT INTO shift_assignments (
-        employee_id, template_id, date, start_time, end_time, status, assigned_by, notes, tenant_id, organization_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        employee_id, template_id, date, start_time, end_time, status, assigned_by, notes, tenant_id, organization_id, is_published
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [
         validatedData.employee_id,
         validatedData.shift_id,
@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
         validatedData.notes || null,
         tenantContext.tenant_id,
         tenantContext.organization_id,
+        false, // Always create as draft
       ]
     )
 

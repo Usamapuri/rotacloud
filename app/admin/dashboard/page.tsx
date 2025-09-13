@@ -185,6 +185,11 @@ export default function AdminDashboard() {
   const [showImpersonationModal, setShowImpersonationModal] = useState(false)
   const [isImpersonating, setIsImpersonating] = useState(false)
   const [originalUser, setOriginalUser] = useState<any>(null)
+  const [approvalsStats, setApprovalsStats] = useState<{ pending: number; approved: number; rejected: number; pendingHours: number; approvedHours: number } | null>(null)
+  const [weeklyPlannedHours, setWeeklyPlannedHours] = useState<number>(0)
+  const [weeklyPlannedCost, setWeeklyPlannedCost] = useState<number>(0)
+  const [budgetWeekly, setBudgetWeekly] = useState<number | null>(null)
+  const [overtimeCount, setOvertimeCount] = useState<number>(0)
   
   const router = useRouter()
   
@@ -295,6 +300,21 @@ export default function AdminDashboard() {
         }
       }
 
+      // Load approvals stats (timesheet summary)
+      const approvalsResponse = await fetch('/api/admin/shift-approvals?status=all&limit=1', { headers: authHeaders })
+      if (approvalsResponse.ok) {
+        const data = await approvalsResponse.json()
+        if (data?.data?.stats) {
+          setApprovalsStats({
+            pending: Number(data.data.stats.pending || 0),
+            approved: Number(data.data.stats.approved || 0),
+            rejected: Number(data.data.stats.rejected || 0),
+            pendingHours: Number(data.data.stats.pendingHours || 0),
+            approvedHours: Number(data.data.stats.approvedHours || 0),
+          })
+        }
+      }
+
       // Load time entries for attendance tracking (legacy)
       const today = new Date().toISOString().split('T')[0]
       const timeResponse = await fetch(`/api/time/entries?start_date=${today}&end_date=${today}`, { headers: authHeaders })
@@ -302,6 +322,7 @@ export default function AdminDashboard() {
         const data = await timeResponse.json()
         if (data.data) {
           setTimeEntries(data.data)
+          setOvertimeCount((data.data || []).filter((t: any) => t.status === 'overtime').length)
           console.log(`📊 Loaded ${data.data.length} time entries for today`)
         }
       }
@@ -355,6 +376,27 @@ export default function AdminDashboard() {
           totalShifts = shiftAssignmentsData.length
           completedShifts = shiftAssignmentsData.filter((assignment: any) => assignment.status === 'completed').length
           console.log(`📊 Loaded ${shiftAssignmentsData.length} shift assignments for current week`)
+
+          // Compute planned hours and cost
+          let hoursSum = 0
+          let costSum = 0
+          for (const a of shiftAssignmentsData) {
+            try {
+              const start = a.start_time
+              const end = a.end_time
+              if (start && end) {
+                const [sh, sm] = String(start).split(':').map((x: string) => parseInt(x, 10))
+                const [eh, em] = String(end).split(':').map((x: string) => parseInt(x, 10))
+                const duration = (eh + em / 60) - (sh + sm / 60)
+                if (!isNaN(duration) && duration > 0) {
+                  hoursSum += duration
+                  if (typeof a.hourly_rate === 'number') costSum += duration * a.hourly_rate
+                }
+              }
+            } catch {}
+          }
+          setWeeklyPlannedHours(parseFloat(hoursSum.toFixed(2)))
+          setWeeklyPlannedCost(parseFloat(costSum.toFixed(2)))
         }
       }
 
@@ -757,10 +799,8 @@ export default function AdminDashboard() {
         const role = data.targetUser.role
         if (role === 'employee' || role === 'agent') {
           router.push('/employee/dashboard')
-        } else if (role === 'team_lead') {
-          router.push('/team-lead/dashboard')
-        } else if (role === 'project_manager') {
-          router.push('/project-manager/dashboard')
+        } else if (role === 'manager') {
+          router.push('/admin/dashboard')
         } else {
           router.push('/admin/dashboard')
         }
@@ -903,32 +943,26 @@ export default function AdminDashboard() {
                 <RefreshCw className={`h-4 w-4 mr-2 ${isPollingLoading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
-              <Button onClick={() => setShowBroadcastModal(true)} variant="outline" size="sm" className="border-blue-300 text-blue-700 hover:bg-blue-50">
-                <Bell className="h-4 w-4 mr-2" />
-                Broadcast Message
-              </Button>
-              <Button onClick={() => router.push('/admin/reports')} variant="outline" size="sm" className="border-blue-300 text-blue-700 hover:bg-blue-50">
-                <BarChart3 className="h-4 w-4 mr-2" />
-                Reports
-              </Button>
-              <Button onClick={() => router.push('/admin/scheduling-new')} variant="outline" size="sm" className="border-blue-300 text-blue-700 hover:bg-blue-50">
-                <Calendar className="h-4 w-4 mr-2" />
-                Create Shift
-              </Button>
-              <Button onClick={() => router.push('/admin/employees')} variant="outline" size="sm" className="border-blue-300 text-blue-700 hover:bg-blue-50">
-                <UserPlus className="h-4 w-4 mr-2" />
-                Manage Agents
-              </Button>
-              <Button onClick={() => router.push('/admin/timesheet')} variant="outline" size="sm" className="border-blue-300 text-blue-700 hover:bg-blue-50">
-                <FileText className="h-4 w-4 mr-2" />
-                Timesheet
-              </Button>
+              {/* Reduced header actions to keep UI clean */}
             </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Quick Actions - simplified */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+          <Button variant="outline" onClick={() => router.push('/admin/scheduling')}>
+            <Calendar className="h-4 w-4 mr-2" /> Open Rota
+          </Button>
+          <Button variant="outline" onClick={() => router.push('/admin/shift-approvals')}>
+            <CheckCircle className="h-4 w-4 mr-2" /> Review Approvals
+          </Button>
+          <Button variant="outline" onClick={() => router.push('/admin/timesheet')}>
+            <FileText className="h-4 w-4 mr-2" /> Timesheets
+          </Button>
+        </div>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 hover:shadow-lg transition-shadow">
@@ -1042,13 +1076,27 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
 
-              {/* Active and Upcoming Shifts */}
+              {/* Rota at a Glance & Upcoming Shifts */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Active and Upcoming Shifts</CardTitle>
-                  <CardDescription>Current week's shift assignments</CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Rota at a Glance</CardTitle>
+                      <CardDescription>Current week's key figures</CardDescription>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="p-3 border rounded-md">
+                      <p className="text-xs text-gray-500">Planned Hours</p>
+                      <p className="text-lg font-semibold">{weeklyPlannedHours.toFixed(2)}h</p>
+                    </div>
+                    <div className="p-3 border rounded-md">
+                      <p className="text-xs text-gray-500">Planned Cost</p>
+                      <p className="text-lg font-semibold">£{weeklyPlannedCost.toFixed(2)}</p>
+                    </div>
+                  </div>
                   <div className="space-y-3">
                     {shiftAssignments.slice(0, 5).map((assignment) => (
                       <div key={assignment.id} className="flex items-center justify-between p-3 border rounded-lg">
@@ -1076,6 +1124,54 @@ export default function AdminDashboard() {
                       </div>
                     )}
                   </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Additional Overview Panels */}
+          <TabsContent value="overview" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <Card className="lg:col-span-1">
+                <CardHeader>
+                  <CardTitle>Timesheet Summary</CardTitle>
+                  <CardDescription>Pay period overview</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm"><span>Pending</span><span>{approvalsStats?.pending ?? 0}</span></div>
+                    <div className="flex justify-between text-sm"><span>Approved</span><span>{approvalsStats?.approved ?? 0}</span></div>
+                    <div className="flex justify-between text-sm"><span>Rejected</span><span>{approvalsStats?.rejected ?? 0}</span></div>
+                    <div className="flex justify-between text-sm pt-2"><span>Pending Hours</span><span>{approvalsStats?.pendingHours?.toFixed ? approvalsStats?.pendingHours.toFixed(2) : (approvalsStats?.pendingHours || 0)}</span></div>
+                    <div className="flex justify-between text-sm"><span>Approved Hours</span><span>{approvalsStats?.approvedHours?.toFixed ? approvalsStats?.approvedHours.toFixed(2) : (approvalsStats?.approvedHours || 0)}</span></div>
+                  </div>
+                  <div className="pt-4">
+                    <Button variant="outline" size="sm" onClick={() => router.push('/admin/shift-approvals')}>Manage Approvals</Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="lg:col-span-1">
+                <CardHeader>
+                  <CardTitle>Action Items</CardTitle>
+                  <CardDescription>What needs attention</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between"><span>Swap Requests</span><span className="font-semibold">{stats.pendingSwapRequests}</span></div>
+                    <div className="flex justify-between"><span>Leave Requests</span><span className="font-semibold">{stats.pendingLeaveRequests}</span></div>
+                    <div className="flex justify-between"><span>Overtime Entries</span><span className="font-semibold">{overtimeCount}</span></div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="lg:col-span-1">
+                <CardHeader>
+                  <CardTitle>Recent Activity</CardTitle>
+                  <CardDescription>Latest changes</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-sm text-gray-500">Activity log coming soon</div>
                 </CardContent>
               </Card>
             </div>

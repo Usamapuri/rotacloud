@@ -101,7 +101,11 @@ export default function EmployeeSchedulingPage() {
   }, [currentUser, selectedDate])
 
   const loadEmployees = async () => {
-    const res = await fetch('/api/scheduling/employees')
+    const user = AuthService.getCurrentUser()
+    const headers: Record<string, string> = {}
+    if (user?.id) headers['authorization'] = `Bearer ${user.id}`
+    
+    const res = await fetch('/api/scheduling/employees', { headers })
     const data = await res.json()
     if (data.success) {
       setEmployees(data.data)
@@ -109,10 +113,20 @@ export default function EmployeeSchedulingPage() {
   }
 
   const loadWeek = async (employeeId: string, date: string) => {
-    const res = await fetch(`/api/scheduling/week/${date}?employee_id=${employeeId}`)
-    if (!res.ok) return
+    const user = AuthService.getCurrentUser()
+    const headers: Record<string, string> = {}
+    if (user?.id) headers['authorization'] = `Bearer ${user.id}`
+    
+    const res = await fetch(`/api/scheduling/week/${date}?employee_id=${employeeId}&published_only=true`, { headers })
+    if (!res.ok) {
+      console.error('Failed to load week data:', res.status, res.statusText)
+      return
+    }
     const data = await res.json()
-    if (!data.success) return
+    if (!data.success) {
+      console.error('API returned error:', data.error)
+      return
+    }
     const me = (data.data.employees as any[]).find((e: any) => e.id === employeeId)
     setAssignmentsByDate(me?.assignments || {})
   }

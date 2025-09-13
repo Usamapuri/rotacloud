@@ -56,11 +56,16 @@ export function LeaveRequests() {
       const user = AuthService.getCurrentUser()
       if (!user) return
 
-      // Load leave requests
-      const response = await fetch('/api/leave-requests')
+      // Load leave requests with authentication
+      const headers: Record<string, string> = {}
+      if (user?.id) headers['authorization'] = `Bearer ${user.id}`
+
+      const response = await fetch('/api/leave-requests', { headers })
       if (response.ok) {
         const requests = await response.json()
         setLeaveRequests(requests.data || [])
+      } else {
+        console.error('Failed to load leave requests:', response.status, response.statusText)
       }
     } catch (error) {
       console.error('Error loading leave request data:', error)
@@ -83,16 +88,24 @@ export function LeaveRequests() {
     }
     setIsLoading(true)
     try {
+      // Calculate days requested
+      const daysRequested = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+
+      const user = AuthService.getCurrentUser()
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (user?.id) headers['authorization'] = `Bearer ${user.id}`
+
       const response = await fetch('/api/leave-requests', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           employee_id: currentUser.id,
-          leave_type: leaveType,
+          type: leaveType,
           start_date: startDate.toISOString().split('T')[0],
           end_date: endDate.toISOString().split('T')[0],
+          days_requested: daysRequested,
           reason,
         }),
       })

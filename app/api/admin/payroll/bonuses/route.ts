@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     // Get employee_id from email for backward compatibility
     const employeeResult = await query(`
-      SELECT employee_code FROM employees_new WHERE email = $1
+      SELECT employee_code FROM employees WHERE email = $1
     `, [employee_email])
 
     if (employeeResult.rows.length === 0) {

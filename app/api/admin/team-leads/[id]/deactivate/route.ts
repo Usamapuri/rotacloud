@@ -15,14 +15,14 @@ export async function POST(
     const teamLeadId = params.id
 
     // Ensure user exists and is team lead
-    const emp = await query('SELECT id FROM employees_new WHERE id = $1 AND role = $2', [teamLeadId, 'team_lead'])
+    const emp = await query('SELECT id FROM employees WHERE id = $1 AND role = $2', [teamLeadId, 'team_lead'])
     if (emp.rows.length === 0) return NextResponse.json({ error: 'Team lead not found' }, { status: 404 })
 
     // Clear teams led by this lead
     await query('UPDATE teams SET team_lead_id = NULL, updated_at = NOW() WHERE team_lead_id = $1', [teamLeadId])
 
     // Demote to employee
-    const updated = await query("UPDATE employees_new SET role = 'employee', updated_at = NOW() WHERE id = $1 RETURNING *", [teamLeadId])
+    const updated = await query("UPDATE employees SET role = 'employee', updated_at = NOW() WHERE id = $1 RETURNING *", [teamLeadId])
 
     return NextResponse.json({ success: true, data: updated.rows[0], message: 'Team lead deactivated' })
   } catch (err) {

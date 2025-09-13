@@ -812,8 +812,8 @@ export async function createShiftAssignment(assignmentData: Omit<ShiftAssignment
   const result = await query(`
     INSERT INTO shift_assignments (
       employee_id, template_id, date, start_time, end_time, 
-      status, assigned_by, notes
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      status, assigned_by, notes, is_published
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     RETURNING *
   `, [
     assignmentData.employee_id,
@@ -823,7 +823,8 @@ export async function createShiftAssignment(assignmentData: Omit<ShiftAssignment
     assignmentData.end_time,
     assignmentData.status,
     assignmentData.assigned_by,
-    assignmentData.notes
+    assignmentData.notes,
+    false // Always create as draft
   ])
 
   return result.rows[0]
@@ -1171,6 +1172,7 @@ export async function getLeaveRequests(filters?: {
   type?: string
   start_date?: string
   end_date?: string
+  tenant_id?: string
 }) {
   let queryText = `
     SELECT 
@@ -1188,34 +1190,46 @@ export async function getLeaveRequests(filters?: {
   const params: any[] = []
   let paramIndex = 1
 
+  // Add tenant filtering if provided
+  if (filters?.tenant_id) {
+    queryText += ` WHERE lr.tenant_id = $${paramIndex}`
+    params.push(filters.tenant_id)
+    paramIndex++
+  }
+
   if (filters?.employee_id) {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(filters.employee_id)
+    const hasExistingConditions = filters?.tenant_id
     if (isUuid) {
-      queryText += ` WHERE lr.employee_id = $${paramIndex}`
+      queryText += hasExistingConditions ? ` AND lr.employee_id = $${paramIndex}` : ` WHERE lr.employee_id = $${paramIndex}`
       params.push(filters.employee_id)
     } else {
-      queryText += ` WHERE e.employee_code = $${paramIndex}`
+      queryText += hasExistingConditions ? ` AND e.employee_code = $${paramIndex}` : ` WHERE e.employee_code = $${paramIndex}`
       params.push(filters.employee_id)
     }
     paramIndex++
   }
   if (filters?.status) {
-    queryText += filters?.employee_id ? ` AND lr.status = $${paramIndex}` : ` WHERE lr.status = $${paramIndex}`
+    const hasExistingConditions = filters?.tenant_id || filters?.employee_id
+    queryText += hasExistingConditions ? ` AND lr.status = $${paramIndex}` : ` WHERE lr.status = $${paramIndex}`
     params.push(filters.status)
     paramIndex++
   }
   if (filters?.type) {
-    queryText += (filters?.employee_id || filters?.status) ? ` AND lr.type = $${paramIndex}` : ` WHERE lr.type = $${paramIndex}`
+    const hasExistingConditions = filters?.tenant_id || filters?.employee_id || filters?.status
+    queryText += hasExistingConditions ? ` AND lr.type = $${paramIndex}` : ` WHERE lr.type = $${paramIndex}`
     params.push(filters.type)
     paramIndex++
   }
   if (filters?.start_date) {
-    queryText += (filters?.employee_id || filters?.status || filters?.type) ? ` AND lr.start_date >= $${paramIndex}` : ` WHERE lr.start_date >= $${paramIndex}`
+    const hasExistingConditions = filters?.tenant_id || filters?.employee_id || filters?.status || filters?.type
+    queryText += hasExistingConditions ? ` AND lr.start_date >= $${paramIndex}` : ` WHERE lr.start_date >= $${paramIndex}`
     params.push(filters.start_date)
     paramIndex++
   }
   if (filters?.end_date) {
-    queryText += (filters?.employee_id || filters?.status || filters?.type || filters?.start_date) ? ` AND lr.end_date <= $${paramIndex}` : ` WHERE lr.end_date <= $${paramIndex}`
+    const hasExistingConditions = filters?.tenant_id || filters?.employee_id || filters?.status || filters?.type || filters?.start_date
+    queryText += hasExistingConditions ? ` AND lr.end_date <= $${paramIndex}` : ` WHERE lr.end_date <= $${paramIndex}`
     params.push(filters.end_date)
   }
 
@@ -1228,11 +1242,11 @@ export async function getLeaveRequests(filters?: {
 /**
  * Create a leave request
  */
-export async function createLeaveRequest(leaveData: Omit<LeaveRequest, 'id' | 'created_at' | 'updated_at' | 'status'>) {
+export async function createLeaveRequest(leaveData: Omit<LeaveRequest, 'id' | 'created_at' | 'updated_at' | 'status'>, tenantId?: string) {
   const result = await query(`
     INSERT INTO leave_requests (
-      employee_id, type, start_date, end_date, days_requested, reason, status
-    ) VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+      employee_id, type, start_date, end_date, days_requested, reason, status${tenantId ? ', tenant_id' : ''}
+    ) VALUES ($1, $2, $3, $4, $5, $6, 'pending'${tenantId ? ', $7' : ''})
     RETURNING *
   `, [
     leaveData.employee_id,
@@ -1240,7 +1254,8 @@ export async function createLeaveRequest(leaveData: Omit<LeaveRequest, 'id' | 'c
     leaveData.start_date,
     leaveData.end_date,
     leaveData.days_requested,
-    leaveData.reason
+    leaveData.reason,
+    ...(tenantId ? [tenantId] as any[] : [])
   ])
 
   return result.rows[0]

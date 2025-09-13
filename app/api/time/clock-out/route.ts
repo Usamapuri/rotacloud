@@ -65,13 +65,23 @@ export async function POST(request: NextRequest) {
 				total_hours = $2, 
 				break_hours = $3, 
 				status = $4,
+				approval_status = $5,
+				total_calls_taken = $6,
+				leads_generated = $7,
+				shift_remarks = $8,
+				performance_rating = $9,
 				updated_at = NOW()
-			WHERE id = $5 AND tenant_id = $6 RETURNING *`,
+			WHERE id = $10 AND tenant_id = $11 RETURNING *`,
 			[
 				clockOutTime.toISOString(), 
 				totalHours, 
 				breakTimeUsed, 
 				'completed',
+				'pending', // Set approval status to pending
+				total_calls_taken || 0,
+				leads_generated || 0,
+				shift_remarks || null,
+				performance_rating || null,
 				currentShift.id,
 				tenantContext.tenant_id,
 			]
@@ -89,6 +99,15 @@ export async function POST(request: NextRequest) {
 			[target_employee_id, tenantContext.tenant_id]
 		)
 
+		// Get employee name for notification
+		const employeeResult = await query(
+			'SELECT first_name, last_name FROM employees WHERE id = $1 AND tenant_id = $2',
+			[target_employee_id, tenantContext.tenant_id]
+		)
+		const employeeName = employeeResult.rows.length > 0 
+			? `${employeeResult.rows[0].first_name} ${employeeResult.rows[0].last_name}`
+			: 'Employee'
+
 		// Create notification for admin about pending approval
 		await query(
 			`
@@ -102,9 +121,9 @@ export async function POST(request: NextRequest) {
 					 '/admin/shift-approvals',
 					 $2
 				FROM employees e 
-				WHERE e.role = 'admin' AND e.tenant_id = $2
+				WHERE e.role = 'admin' AND e.tenant_id = $3
 			`,
-			[`${authResult.user.name || 'Employee'} has completed a shift and requires approval`, tenantContext.tenant_id]
+			[`${employeeName} has completed a shift and requires approval`, tenantContext.tenant_id, tenantContext.tenant_id]
 		)
 
 		return NextResponse.json({

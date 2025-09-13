@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, getLeaveRequests, createLeaveRequest } from '@/lib/database'
 import { createApiAuthMiddleware } from '@/lib/api-auth'
+import { getTenantContext } from '@/lib/tenant'
 import { z } from 'zod'
 
 // Validation schemas
@@ -19,6 +20,17 @@ const createLeaveRequestSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
+    const authMiddleware = createApiAuthMiddleware()
+    const { user, isAuthenticated } = await authMiddleware(request)
+    if (!isAuthenticated || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const tenantContext = await getTenantContext(user.id)
+    if (!tenantContext) {
+      return NextResponse.json({ error: 'No tenant context found' }, { status: 403 })
+    }
+
     // Get query parameters
     const { searchParams } = new URL(request.url)
     const employee_id = searchParams.get('employee_id')
@@ -27,8 +39,8 @@ export async function GET(request: NextRequest) {
     const start_date = searchParams.get('start_date')
     const end_date = searchParams.get('end_date')
 
-    // Build filters
-    const filters: any = {}
+    // Build filters with tenant context
+    const filters: any = { tenant_id: tenantContext.tenant_id }
     if (employee_id) filters.employee_id = employee_id
     if (status) filters.status = status
     if (type) filters.type = type
@@ -54,21 +66,25 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Use demo authentication
     const authMiddleware = createApiAuthMiddleware()
     const { user, isAuthenticated } = await authMiddleware(request)
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const tenantContext = await getTenantContext(user.id)
+    if (!tenantContext) {
+      return NextResponse.json({ error: 'No tenant context found' }, { status: 403 })
     }
 
     // Parse and validate request body
     const body = await request.json()
     const validatedData = createLeaveRequestSchema.parse(body)
 
-    // Check if employee exists and is active
+    // Check if employee exists and is active within tenant
     const employeeResult = await query(
-      'SELECT id FROM employees_new WHERE id = $1 AND is_active = true',
-      [validatedData.employee_id]
+      'SELECT id FROM employees WHERE id = $1 AND is_active = true AND tenant_id = $2',
+      [validatedData.employee_id, tenantContext.tenant_id]
     )
 
     if (employeeResult.rows.length === 0) {
@@ -93,17 +109,18 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Check for overlapping leave requests
+    // Check for overlapping leave requests within tenant
     const overlapResult = await query(
       `SELECT id FROM leave_requests 
        WHERE employee_id = $1 
+       AND tenant_id = $2
        AND status IN ('pending', 'approved')
        AND (
-         (start_date <= $2 AND end_date >= $2) OR
          (start_date <= $3 AND end_date >= $3) OR
-         (start_date >= $2 AND end_date <= $3)
+         (start_date <= $4 AND end_date >= $4) OR
+         (start_date >= $3 AND end_date <= $4)
        )`,
-      [validatedData.employee_id, validatedData.start_date, validatedData.end_date]
+      [validatedData.employee_id, tenantContext.tenant_id, validatedData.start_date, validatedData.end_date]
     )
 
     if (overlapResult.rows.length > 0) {
@@ -112,8 +129,8 @@ export async function POST(request: NextRequest) {
       }, { status: 409 })
     }
 
-    // Create leave request
-    const leaveRequest = await createLeaveRequest(validatedData)
+    // Create leave request with tenant context
+    const leaveRequest = await createLeaveRequest(validatedData, tenantContext.tenant_id)
 
     return NextResponse.json({ 
       data: leaveRequest,

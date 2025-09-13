@@ -23,7 +23,7 @@ export async function GET(
          END as status,
          COALESCE(te.clock_in, sl.clock_in_time) as clock_in,
          COALESCE(te.clock_out, sl.clock_out_time) as clock_out
-       FROM employees_new e
+       FROM employees e
         LEFT JOIN time_entries te ON e.id = te.employee_id AND te.status IN ('in-progress', 'break')
         LEFT JOIN shift_logs sl ON e.id = sl.employee_id AND sl.status = 'active'
         LEFT JOIN break_logs bl ON e.id = bl.employee_id AND bl.status = 'active'

@@ -57,7 +57,25 @@ export async function POST(request: NextRequest) {
       [target_employee_id, tenantContext.tenant_id]
     )
 
-    return NextResponse.json({ success: true, data: breakLog, message: 'Break started successfully', elapsedShiftTime: elapsedShiftTime.toFixed(2) })
+    // Normalize response to BreakLog shape expected by UI
+    const normalized = {
+      id: breakLog.id,
+      shift_log_id: breakLog.id,
+      employee_id: breakLog.employee_id,
+      break_start_time: breakLog.break_start,
+      // Legacy alias for UI fallbacks
+      break_start: breakLog.break_start,
+      break_end_time: breakLog.break_end || null,
+      break_duration: breakLog.break_hours || 0,
+      break_type: 'lunch',
+      status: 'active',
+      // Legacy status alias
+      legacy_status: 'break',
+      created_at: breakLog.created_at,
+      updated_at: breakLog.updated_at,
+    }
+
+    return NextResponse.json({ success: true, data: normalized, message: 'Break started successfully', elapsedShiftTime: elapsedShiftTime.toFixed(2) })
   } catch (error) {
     console.error('Error starting break:', error)
     return NextResponse.json({ error: 'Failed to start break' }, { status: 500 })

@@ -14,7 +14,7 @@ export async function GET(
     const result = await query(
       `SELECT pm.*, e.first_name, e.last_name, e.employee_id
        FROM performance_metrics pm
-       JOIN employees_new e ON pm.employee_id = e.id
+       JOIN employees e ON pm.employee_id = e.id
        WHERE e.team_id = $1 AND pm.date BETWEEN $2 AND $3
        ORDER BY pm.date DESC, e.first_name`,
       [teamId, startDate, endDate]
@@ -31,7 +31,7 @@ export async function GET(
          SUM(pm.calls_handled) as total_calls_handled,
          COUNT(DISTINCT pm.employee_id) as active_employees
        FROM performance_metrics pm
-       JOIN employees_new e ON pm.employee_id = e.id
+       JOIN employees e ON pm.employee_id = e.id
        WHERE e.team_id = $1 AND pm.date BETWEEN $2 AND $3`,
       [teamId, startDate, endDate]
     )

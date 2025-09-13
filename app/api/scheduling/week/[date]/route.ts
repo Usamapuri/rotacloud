@@ -41,13 +41,23 @@ export async function GET(
     const weekStartStr = weekStart.toISOString().split('T')[0]
     const weekEndStr = weekEnd.toISOString().split('T')[0]
 
-    // Employees for tenant - only show agents
+    // Employees for tenant - show schedulable roles
     let employeesQuery = `
       SELECT id, employee_code, first_name, last_name, email, department, job_position
       FROM employees
-      WHERE is_active = true AND tenant_id = $1 AND role = 'agent'
+      WHERE is_active = true AND tenant_id = $1 AND role IN ('agent','employee')
     `
     const employeesParams: any[] = [tenantContext.tenant_id]
+
+    // If user is a manager, restrict employees by their assigned locations
+    if (user.role === 'manager') {
+      const idx = employeesParams.length + 1
+      employeesQuery += ` AND location_id IN (
+        SELECT location_id FROM manager_locations
+        WHERE tenant_id = $1 AND manager_id = $${idx}
+      )`
+      employeesParams.push(user.id)
+    }
 
     if (employeeId) {
       employeesQuery += ` AND id = $2`
@@ -122,6 +132,17 @@ export async function GET(
     const assignmentsParams: any[] = [weekStartStr, weekEndStr, tenantContext.tenant_id]
     let paramIndex = 4
 
+    // If manager, scope assignments through employees' locations
+    if (user.role === 'manager') {
+      assignmentsQuery += ` AND EXISTS (
+        SELECT 1 FROM employees e
+        JOIN manager_locations ml ON ml.location_id = e.location_id AND ml.tenant_id = e.tenant_id
+        WHERE e.id = sa.employee_id AND ml.manager_id = $${paramIndex}
+      )`
+      assignmentsParams.push(user.id)
+      paramIndex++
+    }
+
     // Filter by specific rota if provided
     if (rotaId) {
       assignmentsQuery += ` AND sa.rota_id = $${paramIndex}`
@@ -170,9 +191,15 @@ export async function GET(
         FROM rotas r
         LEFT JOIN shift_assignments sa ON r.id = sa.rota_id
         WHERE r.tenant_id = $1 AND r.week_start_date = $2
+        ${user.role === 'manager' ? `AND EXISTS (
+          SELECT 1 FROM employees e2
+          JOIN manager_locations ml2 ON ml2.location_id = e2.location_id AND ml2.tenant_id = r.tenant_id
+          JOIN shift_assignments sa2 ON sa2.employee_id = e2.id AND sa2.rota_id = r.id
+          WHERE ml2.manager_id = $3
+        )` : ''}
         GROUP BY r.id
         ORDER BY r.created_at DESC
-      `, [tenantContext.tenant_id, weekStartStr])
+      `, user.role === 'manager' ? [tenantContext.tenant_id, weekStartStr, user.id] : [tenantContext.tenant_id, weekStartStr])
       rotas = rotasResult.rows
     } else {
       const currentRotaRes = await query(`
@@ -180,8 +207,14 @@ export async function GET(
         FROM rotas r
         LEFT JOIN shift_assignments sa ON r.id = sa.rota_id
         WHERE r.tenant_id = $1 AND r.id = $2
+        ${user.role === 'manager' ? `AND EXISTS (
+          SELECT 1 FROM employees e2
+          JOIN manager_locations ml2 ON ml2.location_id = e2.location_id AND ml2.tenant_id = r.tenant_id
+          JOIN shift_assignments sa2 ON sa2.employee_id = e2.id AND sa2.rota_id = r.id
+          WHERE ml2.manager_id = $3
+        )` : ''}
         GROUP BY r.id
-      `, [tenantContext.tenant_id, rotaId])
+      `, user.role === 'manager' ? [tenantContext.tenant_id, rotaId, user.id] : [tenantContext.tenant_id, rotaId])
       currentRotaDetails = currentRotaRes.rows[0] || null
     }
 

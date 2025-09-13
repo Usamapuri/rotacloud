@@ -51,7 +51,8 @@ import {
   Shield,
   Mail,
   Phone,
-  MapPin
+  MapPin,
+  DollarSign
 } from "lucide-react"
 import { AuthService } from "@/lib/auth"
 import { toast } from "sonner"
@@ -72,12 +73,18 @@ interface Employee {
   phone?: string
   address?: string
   emergency_contact?: string
+  emergency_phone?: string
+  notes?: string
+  payroll_id?: string
+  overtime_rate?: number
   role?: string
   role_display_name?: string
   role_description?: string
   team_id?: string
   manager_id?: string
   max_hours_per_week?: number
+  location_id?: string
+  location_name?: string
   created_at: string
   updated_at: string
 }
@@ -158,6 +165,7 @@ export default function EmployeeDetailPage() {
   const [teamLeads, setTeamLeads] = useState<TeamLead[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [roleHistory, setRoleHistory] = useState<RoleAssignment[]>([])
+  const [locations, setLocations] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [editForm, setEditForm] = useState<Partial<Employee>>({})
@@ -184,8 +192,21 @@ export default function EmployeeDetailPage() {
   const loadEmployeeData = async () => {
     setIsLoading(true)
     try {
+      const user = AuthService.getCurrentUser()
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (user?.id) {
+        headers['authorization'] = `Bearer ${user.id}`
+      }
+      if (user?.tenant_id) {
+        headers['x-tenant-id'] = user.tenant_id
+      }
+
       // Load employee details
-      const employeeResponse = await fetch(`/api/employees/${employeeId}`)
+      const employeeResponse = await fetch(`/api/employees/${employeeId}`, {
+        headers
+      })
       console.log('Employee response status:', employeeResponse.status)
       if (employeeResponse.ok) {
         const employeeData = await employeeResponse.json()
@@ -204,7 +225,9 @@ export default function EmployeeDetailPage() {
       }
 
       // Load shift logs
-      const shiftLogsResponse = await fetch(`/api/shift-logs/employee?employee_id=${employeeId}`)
+      const shiftLogsResponse = await fetch(`/api/shift-logs/employee?employee_id=${employeeId}`, {
+        headers
+      })
       console.log('Shift logs response status:', shiftLogsResponse.status)
       if (shiftLogsResponse.ok) {
         const shiftLogsData = await shiftLogsResponse.json()
@@ -221,7 +244,9 @@ export default function EmployeeDetailPage() {
       }
 
       // Load projects
-      const projectsResponse = await fetch('/api/projects')
+      const projectsResponse = await fetch('/api/projects', {
+        headers
+      })
       console.log('Projects response status:', projectsResponse.status)
       if (projectsResponse.ok) {
         const projectsData = await projectsResponse.json()
@@ -238,7 +263,9 @@ export default function EmployeeDetailPage() {
       }
 
       // Load teams
-      const teamsResponse = await fetch('/api/teams')
+      const teamsResponse = await fetch('/api/teams', {
+        headers
+      })
       console.log('Teams response status:', teamsResponse.status)
       if (teamsResponse.ok) {
         const teamsData = await teamsResponse.json()
@@ -254,8 +281,29 @@ export default function EmployeeDetailPage() {
         setTeams([])
       }
 
+      // Load locations
+      const locationsResponse = await fetch('/api/locations', {
+        headers
+      })
+      console.log('Locations response status:', locationsResponse.status)
+      if (locationsResponse.ok) {
+        const locationsData = await locationsResponse.json()
+        console.log('Locations API response:', locationsData)
+        if (locationsData && locationsData.success && Array.isArray(locationsData.data)) {
+          setLocations(locationsData.data)
+        } else {
+          console.error('Invalid locations data format:', locationsData)
+          setLocations([])
+        }
+      } else {
+        console.error('Failed to load locations:', locationsResponse.status)
+        setLocations([])
+      }
+
       // Load team leads
-      const teamLeadsResponse = await fetch('/api/admin/team-leads')
+      const teamLeadsResponse = await fetch('/api/admin/team-leads', {
+        headers
+      })
       console.log('Team leads response status:', teamLeadsResponse.status)
       if (teamLeadsResponse.ok) {
         const teamLeadsData = await teamLeadsResponse.json()
@@ -274,7 +322,9 @@ export default function EmployeeDetailPage() {
       }
 
       // Load roles
-      const rolesResponse = await fetch('/api/admin/roles')
+      const rolesResponse = await fetch('/api/admin/roles', {
+        headers
+      })
       if (rolesResponse.ok) {
         const rolesData = await rolesResponse.json()
         setRoles(rolesData)
@@ -285,7 +335,9 @@ export default function EmployeeDetailPage() {
 
       // Load role history if employee exists
       if (employee) {
-        const roleHistoryResponse = await fetch(`/api/admin/employees/${employee.id}/role-history`)
+        const roleHistoryResponse = await fetch(`/api/admin/employees/${employee.id}/role-history`, {
+          headers
+        })
         if (roleHistoryResponse.ok) {
           const roleHistoryData = await roleHistoryResponse.json()
           setRoleHistory(roleHistoryData)
@@ -307,22 +359,33 @@ export default function EmployeeDetailPage() {
     if (!employee) return
 
     try {
+      const user = AuthService.getCurrentUser()
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (user?.id) {
+        headers['authorization'] = `Bearer ${user.id}`
+      }
+      if (user?.tenant_id) {
+        headers['x-tenant-id'] = user.tenant_id
+      }
+
       const response = await fetch(`/api/employees/${employee.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(editForm),
       })
 
       if (response.ok) {
-        const updatedEmployee = await response.json()
+        const result = await response.json()
+        const updatedEmployee = result.data || result
         setEmployee(updatedEmployee)
         setEditForm(updatedEmployee)
         setIsEditing(false)
-        toast.success('Employee updated successfully')
+        toast.success(result.message || 'Employee updated successfully')
       } else {
-        toast.error('Failed to update employee')
+        const errorData = await response.json()
+        toast.error(errorData.error || 'Failed to update employee')
       }
     } catch (error) {
       console.error('Error updating employee:', error)
@@ -334,11 +397,20 @@ export default function EmployeeDetailPage() {
     if (!employee) return
 
     try {
+      const user = AuthService.getCurrentUser()
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (user?.id) {
+        headers['authorization'] = `Bearer ${user.id}`
+      }
+      if (user?.tenant_id) {
+        headers['x-tenant-id'] = user.tenant_id
+      }
+
       const response = await fetch(`/api/admin/employees/${employee.id}/reset-password`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
       })
 
       if (response.ok) {
@@ -358,8 +430,18 @@ export default function EmployeeDetailPage() {
     if (!employee) return
 
     try {
+      const user = AuthService.getCurrentUser()
+      const headers: Record<string, string> = {}
+      if (user?.id) {
+        headers['authorization'] = `Bearer ${user.id}`
+      }
+      if (user?.tenant_id) {
+        headers['x-tenant-id'] = user.tenant_id
+      }
+
       const response = await fetch(`/api/admin/employees/${employee.id}/export-attendance`, {
         method: 'GET',
+        headers,
       })
 
       if (response.ok) {
@@ -386,11 +468,20 @@ export default function EmployeeDetailPage() {
     if (!employee || !selectedProject) return
 
     try {
+      const user = AuthService.getCurrentUser()
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (user?.id) {
+        headers['authorization'] = `Bearer ${user.id}`
+      }
+      if (user?.tenant_id) {
+        headers['x-tenant-id'] = user.tenant_id
+      }
+
       const response = await fetch('/api/admin/projects/assign-manager', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           project_id: selectedProject,
           employee_id: employee.id,
@@ -415,11 +506,20 @@ export default function EmployeeDetailPage() {
     if (!employee || !selectedTeam) return
 
     try {
+      const user = AuthService.getCurrentUser()
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (user?.id) {
+        headers['authorization'] = `Bearer ${user.id}`
+      }
+      if (user?.tenant_id) {
+        headers['x-tenant-id'] = user.tenant_id
+      }
+
       const response = await fetch(`/api/admin/teams/${selectedTeam}/assign-lead`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           employee_id: employee.id,
         }),
@@ -443,11 +543,20 @@ export default function EmployeeDetailPage() {
     if (!employee || !selectedRole) return
 
     try {
+      const user = AuthService.getCurrentUser()
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (user?.id) {
+        headers['authorization'] = `Bearer ${user.id}`
+      }
+      if (user?.tenant_id) {
+        headers['x-tenant-id'] = user.tenant_id
+      }
+
       const response = await fetch(`/api/admin/employees/${employee.id}/role`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           new_role: selectedRole,
           reason: roleAssignmentReason || 'Role assignment',
@@ -565,7 +674,11 @@ export default function EmployeeDetailPage() {
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="pay-payroll">Pay & Payroll</TabsTrigger>
+          <TabsTrigger value="leave-availability">Leave & Availability</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
+          <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="teams">Teams</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
@@ -777,6 +890,769 @@ export default function EmployeeDetailPage() {
           </div>
         </TabsContent>
 
+        {/* Profile Tab */}
+        <TabsContent value="profile" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Personal Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Personal Information
+                </CardTitle>
+                <CardDescription>
+                  Basic personal details and contact information
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="first_name">First Name</Label>
+                        <Input
+                          id="first_name"
+                          value={editForm.first_name || ""}
+                          onChange={(e) => setEditForm({...editForm, first_name: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="last_name">Last Name</Label>
+                        <Input
+                          id="last_name"
+                          value={editForm.last_name || ""}
+                          onChange={(e) => setEditForm({...editForm, last_name: e.target.value})}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="email">Email Address</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={editForm.email || ""}
+                        onChange={(e) => setEditForm({...editForm, email: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="phone">Phone Number</Label>
+                      <Input
+                        id="phone"
+                        value={editForm.phone || ""}
+                        onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="address">Address</Label>
+                      <Input
+                        id="address"
+                        value={editForm.address || ""}
+                        onChange={(e) => setEditForm({...editForm, address: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Full Name</Label>
+                      <p>{employee.first_name} {employee.last_name}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Email</Label>
+                      <p>{employee.email}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Phone</Label>
+                      <p>{employee.phone || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Address</Label>
+                      <p>{employee.address || 'Not provided'}</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Emergency Contact */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  Emergency Contact
+                </CardTitle>
+                <CardDescription>
+                  Emergency contact information for this employee
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="emergency_contact">Emergency Contact Name</Label>
+                      <Input
+                        id="emergency_contact"
+                        value={editForm.emergency_contact || ""}
+                        onChange={(e) => setEditForm({...editForm, emergency_contact: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="emergency_phone">Emergency Contact Phone</Label>
+                      <Input
+                        id="emergency_phone"
+                        value={editForm.emergency_phone || ""}
+                        onChange={(e) => setEditForm({...editForm, emergency_phone: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Contact Name</Label>
+                      <p>{employee.emergency_contact || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Contact Phone</Label>
+                      <p>{employee.emergency_phone || 'Not provided'}</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Employment Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building className="h-5 w-5" />
+                  Employment Details
+                </CardTitle>
+                <CardDescription>
+                  Employment type, dates, and work schedule
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="department">Department</Label>
+                      <Select value={editForm.department || ""} onValueChange={(value) => setEditForm({...editForm, department: value})}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Sales">Sales</SelectItem>
+                          <SelectItem value="Support">Support</SelectItem>
+                          <SelectItem value="Management">Management</SelectItem>
+                          <SelectItem value="IT">IT</SelectItem>
+                          <SelectItem value="HR">HR</SelectItem>
+                          <SelectItem value="Operations">Operations</SelectItem>
+                          <SelectItem value="Finance">Finance</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="position">Job Position</Label>
+                      <Input
+                        id="position"
+                        value={editForm.position || ""}
+                        onChange={(e) => setEditForm({...editForm, position: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="hire_date">Hire Date</Label>
+                      <Input
+                        id="hire_date"
+                        type="date"
+                        value={employee.hire_date ? new Date(employee.hire_date).toISOString().split('T')[0] : ""}
+                        readOnly
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="max_hours_per_week">Max Hours Per Week</Label>
+                      <Input
+                        id="max_hours_per_week"
+                        type="number"
+                        value={editForm.max_hours_per_week || ""}
+                        onChange={(e) => setEditForm({...editForm, max_hours_per_week: parseInt(e.target.value)})}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="location_id">Location</Label>
+                      <Select 
+                        value={editForm.location_id || ""} 
+                        onValueChange={(value) => setEditForm({...editForm, location_id: value})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">No Location</SelectItem>
+                          {locations.map((location) => (
+                            <SelectItem key={location.id} value={location.id}>
+                              {location.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Department</Label>
+                      <p>{employee.department}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Position</Label>
+                      <p>{employee.position}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Hire Date</Label>
+                      <p>{formatDate(employee.hire_date)}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Max Hours/Week</Label>
+                      <p>{employee.max_hours_per_week || 40} hours</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Location</Label>
+                      <p>{employee.location_name || 'No location assigned'}</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Roles and Locations */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Roles and Locations
+                </CardTitle>
+                <CardDescription>
+                  Role assignments and location access
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="role">Current Role</Label>
+                      <Select value={editForm.role || ""} onValueChange={(value) => setEditForm({...editForm, role: value})}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="agent">Agent</SelectItem>
+                          <SelectItem value="employee">Employee</SelectItem>
+                          <SelectItem value="lead">Team Lead</SelectItem>
+                          <SelectItem value="manager">Manager</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="team_id">Assigned Team</Label>
+                      <Select value={editForm.team_id || ""} onValueChange={(value) => setEditForm({...editForm, team_id: value})}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select team" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {teams.map((team) => (
+                            <SelectItem key={team.id} value={team.id}>
+                              {team.name} ({team.department})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="manager_id">Manager</Label>
+                      <Select value={editForm.manager_id || ""} onValueChange={(value) => setEditForm({...editForm, manager_id: value})}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select manager" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {teamLeads.map((lead) => (
+                            <SelectItem key={lead.id} value={lead.id}>
+                              {lead.first_name} {lead.last_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Current Role</Label>
+                      <p>{employee.role_display_name || employee.role || 'Not assigned'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Assigned Team</Label>
+                      <p>{teams.find(t => t.id === employee.team_id)?.name || 'Not assigned'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Manager</Label>
+                      <p>{teamLeads.find(tl => tl.id === employee.manager_id)?.first_name + ' ' + teamLeads.find(tl => tl.id === employee.manager_id)?.last_name || 'Not assigned'}</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Notes Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Notes
+              </CardTitle>
+              <CardDescription>
+                Additional notes and comments about this employee
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isEditing ? (
+                <div>
+                  <Label htmlFor="notes">Employee Notes</Label>
+                  <textarea
+                    id="notes"
+                    className="w-full mt-2 p-3 border rounded-md min-h-[100px]"
+                    value={editForm.notes || ""}
+                    onChange={(e) => setEditForm({...editForm, notes: e.target.value})}
+                    placeholder="Add notes about this employee..."
+                  />
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm text-gray-600">
+                    {employee.notes || 'No notes available'}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end space-x-2">
+            {isEditing ? (
+              <>
+                <Button onClick={handleSaveEmployee}>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Changes
+                </Button>
+                <Button variant="outline" onClick={() => setIsEditing(false)}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => setIsEditing(true)}>
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Profile
+              </Button>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Pay & Payroll Tab */}
+        <TabsContent value="pay-payroll" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Wage and Salary Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5" />
+                  Wage and Salary Information
+                </CardTitle>
+                <CardDescription>
+                  Base pay rates and salary information
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="hourly_rate">Hourly Rate ($)</Label>
+                      <Input
+                        id="hourly_rate"
+                        type="number"
+                        step="0.01"
+                        value={editForm.hourly_rate || ""}
+                        onChange={(e) => setEditForm({...editForm, hourly_rate: parseFloat(e.target.value)})}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="payroll_id">Payroll ID</Label>
+                      <Input
+                        id="payroll_id"
+                        value={editForm.payroll_id || ""}
+                        onChange={(e) => setEditForm({...editForm, payroll_id: e.target.value})}
+                        placeholder="Enter unique payroll identifier"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="overtime_rate">Overtime Rate ($)</Label>
+                      <Input
+                        id="overtime_rate"
+                        type="number"
+                        step="0.01"
+                        value={editForm.overtime_rate || ""}
+                        onChange={(e) => setEditForm({...editForm, overtime_rate: parseFloat(e.target.value)})}
+                        placeholder="Auto-calculated if empty"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Hourly Rate</Label>
+                      <p>${employee.hourly_rate || 0}/hr</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Payroll ID</Label>
+                      <p>{employee.payroll_id || 'Not assigned'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-500">Overtime Rate</Label>
+                      <p>${employee.overtime_rate || (employee.hourly_rate * 1.5).toFixed(2)}/hr</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Custom Role Rates */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Custom Role Rates
+                </CardTitle>
+                <CardDescription>
+                  Different pay rates for different job roles
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Agent Role</p>
+                      <p className="text-sm text-gray-600">Customer service and support</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">${employee.hourly_rate || 0}/hr</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Team Lead Role</p>
+                      <p className="text-sm text-gray-600">Supervisory responsibilities</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">${(employee.hourly_rate * 1.2 || 0).toFixed(2)}/hr</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Manager Role</p>
+                      <p className="text-sm text-gray-600">Management and oversight</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">${(employee.hourly_rate * 1.5 || 0).toFixed(2)}/hr</p>
+                    </div>
+                  </div>
+                </div>
+                <Button variant="outline" className="w-full">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Custom Rate
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Payroll Integration */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Download className="h-5 w-5" />
+                  Payroll Integration
+                </CardTitle>
+                <CardDescription>
+                  Export data for payroll software
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Payroll ID</p>
+                      <p className="text-sm text-gray-600">Unique identifier for payroll systems</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">{employee.payroll_id || 'Not set'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Last Export</p>
+                      <p className="text-sm text-gray-600">Most recent payroll data export</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">Never</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <Button variant="outline" className="flex-1">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export Payroll Data
+                  </Button>
+                  <Button variant="outline" className="flex-1">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Configure Integration
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Overtime Settings */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Overtime Settings
+                </CardTitle>
+                <CardDescription>
+                  Overtime calculation and approval settings
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Overtime Threshold</p>
+                      <p className="text-sm text-gray-600">Hours per week before overtime kicks in</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">40 hours</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Overtime Multiplier</p>
+                      <p className="text-sm text-gray-600">Rate multiplier for overtime hours</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">1.5x</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Auto-Approval</p>
+                      <p className="text-sm text-gray-600">Automatically approve overtime hours</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="outline">Disabled</Badge>
+                    </div>
+                  </div>
+                </div>
+                <Button variant="outline" className="w-full">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Configure Overtime Rules
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Leave & Availability Tab */}
+        <TabsContent value="leave-availability" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Holiday Allowance */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Holiday Allowance
+                </CardTitle>
+                <CardDescription>
+                  Annual leave allowance and accrual settings
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Annual Allowance</p>
+                      <p className="text-sm text-gray-600">Total days per year</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">25 days</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Used This Year</p>
+                      <p className="text-sm text-gray-600">Days taken so far</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">8 days</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Remaining</p>
+                      <p className="text-sm text-gray-600">Available days</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-green-600">17 days</p>
+                    </div>
+                  </div>
+                </div>
+                <Button variant="outline" className="w-full">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adjust Allowance
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Leave Requests */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Leave Requests
+                </CardTitle>
+                <CardDescription>
+                  Manage leave requests and approvals
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Dec 15-20, 2024</p>
+                      <p className="text-sm text-gray-600">Holiday vacation</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="default">Approved</Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Jan 5, 2025</p>
+                      <p className="text-sm text-gray-600">Personal day</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="secondary">Pending</Badge>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <Button variant="outline" className="flex-1">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Leave Request
+                  </Button>
+                  <Button variant="outline" className="flex-1">
+                    <Eye className="h-4 w-4 mr-2" />
+                    View All Requests
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Availability */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Availability
+                </CardTitle>
+                <CardDescription>
+                  Preferred working hours and availability
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Monday - Friday</p>
+                      <p className="text-sm text-gray-600">Regular working days</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="default">Available</Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Weekends</p>
+                      <p className="text-sm text-gray-600">Saturday and Sunday</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="outline">Limited</Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Preferred Hours</p>
+                      <p className="text-sm text-gray-600">9:00 AM - 5:00 PM</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">8 hours</p>
+                    </div>
+                  </div>
+                </div>
+                <Button variant="outline" className="w-full">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Update Availability
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Unavailability */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <XCircle className="h-5 w-5" />
+                  Unavailability
+                </CardTitle>
+                <CardDescription>
+                  Specific dates when employee is unavailable
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Dec 25, 2024</p>
+                      <p className="text-sm text-gray-600">Christmas Day</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="destructive">Unavailable</Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Jan 1, 2025</p>
+                      <p className="text-sm text-gray-600">New Year's Day</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="destructive">Unavailable</Badge>
+                    </div>
+                  </div>
+                </div>
+                <Button variant="outline" className="w-full">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Unavailability
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
         {/* Attendance Tab */}
         <TabsContent value="attendance" className="space-y-6">
           <Card>
@@ -824,6 +1700,223 @@ export default function EmployeeDetailPage() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Documents Tab */}
+        <TabsContent value="documents" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Document Management */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Document Management
+                </CardTitle>
+                <CardDescription>
+                  Upload and manage employee documents
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Employment Contract</p>
+                      <p className="text-sm text-gray-600">Signed employment agreement</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="default">Uploaded</Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Right to Work</p>
+                      <p className="text-sm text-gray-600">Work authorization documents</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="secondary">Pending</Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">ID Verification</p>
+                      <p className="text-sm text-gray-600">Government issued ID</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="default">Uploaded</Badge>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <Button variant="outline" className="flex-1">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Upload Document
+                  </Button>
+                  <Button variant="outline" className="flex-1">
+                    <Eye className="h-4 w-4 mr-2" />
+                    View All Documents
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Account Type & Permissions */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Account Type & Permissions
+                </CardTitle>
+                <CardDescription>
+                  Manage account type and access permissions
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Current Role</p>
+                      <p className="text-sm text-gray-600">Account access level</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="default">{employee.role_display_name || employee.role || 'Not assigned'}</Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Dashboard Access</p>
+                      <p className="text-sm text-gray-600">Available dashboard sections</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">Employee Dashboard</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Payroll Access</p>
+                      <p className="text-sm text-gray-600">Can view payroll information</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="outline">No Access</Badge>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setShowRoleAssignmentDialog(true)}>
+                    <Shield className="h-4 w-4 mr-2" />
+                    Change Role
+                  </Button>
+                  <Button variant="outline" className="flex-1">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Manage Permissions
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Manager Permissions */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Manager Permissions
+                </CardTitle>
+                <CardDescription>
+                  Special permissions for managers and team leads
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Team Management</p>
+                      <p className="text-sm text-gray-600">Can manage team members</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="outline">Disabled</Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Schedule Approval</p>
+                      <p className="text-sm text-gray-600">Can approve team schedules</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="outline">Disabled</Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Performance Reviews</p>
+                      <p className="text-sm text-gray-600">Can conduct performance reviews</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="outline">Disabled</Badge>
+                    </div>
+                  </div>
+                </div>
+                <Button variant="outline" className="w-full">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Configure Manager Permissions
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Security Settings */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Key className="h-5 w-5" />
+                  Security Settings
+                </CardTitle>
+                <CardDescription>
+                  Account security and access controls
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Two-Factor Authentication</p>
+                      <p className="text-sm text-gray-600">2FA enabled for account</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="outline">Disabled</Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Last Password Change</p>
+                      <p className="text-sm text-gray-600">Most recent password update</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">Never</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">Account Status</p>
+                      <p className="text-sm text-gray-600">Current account state</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant={employee.is_active ? "default" : "secondary"}>
+                        {employee.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setShowResetPasswordDialog(true)}>
+                    <Key className="h-4 w-4 mr-2" />
+                    Reset Password
+                  </Button>
+                  <Button variant="outline" className="flex-1">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Security Settings
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Projects Tab */}

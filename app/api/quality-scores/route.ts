@@ -18,8 +18,8 @@ export async function GET(request: NextRequest) {
         evaluator.first_name as evaluator_first_name,
         evaluator.last_name as evaluator_last_name
       FROM quality_scores qs
-      JOIN employees_new e ON qs.employee_id = e.id
-      JOIN employees_new evaluator ON qs.evaluator_id = evaluator.id
+      JOIN employees e ON qs.employee_id = e.id
+      JOIN employees evaluator ON qs.evaluator_id = evaluator.id
       WHERE 1=1`
     const params: any[] = []
     let idx = 1

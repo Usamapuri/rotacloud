@@ -51,6 +51,7 @@ interface ShiftAssignmentModalProps {
   date: string
   templates: ShiftTemplate[]
   onAssignmentCreated: () => void
+  currentRotaId?: string | null
 }
 
 export default function ShiftAssignmentModal({
@@ -59,7 +60,8 @@ export default function ShiftAssignmentModal({
   employee,
   date,
   templates,
-  onAssignmentCreated
+  onAssignmentCreated,
+  currentRotaId
 }: ShiftAssignmentModalProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
   const [customStartTime, setCustomStartTime] = useState('')
@@ -136,7 +138,8 @@ export default function ShiftAssignmentModal({
             override_end_time: useCustomShift ? customEndTime : undefined,
             override_color: useCustomShift ? '#3B82F6' : undefined,
             date: d,
-            notes: notes
+            notes: notes,
+            rota_id: currentRotaId
           })
         })
         if (!res.ok) {

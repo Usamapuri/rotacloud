@@ -16,9 +16,9 @@ export async function GET(
 		const teamId = params.id
 		const result = await query(
 			`SELECT t.*, e.first_name as team_lead_first_name, e.last_name as team_lead_last_name, e.email as team_lead_email,
-				(SELECT COUNT(*) FROM employees_new m WHERE m.team_id = t.id AND m.is_active = true) as member_count
+				(SELECT COUNT(*) FROM employees m WHERE m.team_id = t.id AND m.is_active = true) as member_count
 			 FROM teams t
-			 LEFT JOIN employees_new e ON t.team_lead_id = e.id
+			 LEFT JOIN employees e ON t.team_lead_id = e.id
 			 WHERE t.id = $1`,
 			[teamId]
 		)

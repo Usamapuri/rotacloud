@@ -1,5 +1,5 @@
 export const createApiAuthMiddleware = jest.fn(() => async () => ({
-  user: { id: 'tl-123', role: 'team_lead', email: 'tl@example.com' },
+  user: { id: 'mgr-123', role: 'manager', email: 'mgr@example.com' },
   isAuthenticated: true,
 }))
 

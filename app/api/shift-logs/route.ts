@@ -23,17 +23,30 @@ export async function GET(request: NextRequest) {
     // Build filters
     const filters: any = {}
     if (employee_id) filters.employee_id = employee_id
-    if (statusParam) filters.status = (statusParam === 'active') ? 'in-progress' : statusParam
+    // When UI requests 'active', include both in-progress and break entries
+    const includeActiveStatuses = statusParam === 'active'
+    if (statusParam && !includeActiveStatuses) {
+      filters.status = statusParam
+    }
     if (start_date) filters.start_date = start_date
     if (end_date) filters.end_date = end_date
 
     // Enforce tenant scoping at the query level
     let shiftLogs = await getShiftLogs({ ...filters, tenant_id: tenant.tenant_id })
 
+    if (includeActiveStatuses) {
+      // If we need active-like rows, fetch break rows as well and merge
+      const breakRows = await getShiftLogs({ employee_id, start_date, end_date, status: 'break', tenant_id: tenant.tenant_id })
+      // Merge unique by id
+      const byId: Record<string, any> = {}
+      for (const row of [...shiftLogs, ...breakRows]) byId[row.id] = row
+      shiftLogs = Object.values(byId)
+    }
+
     // Normalize legacy statuses to UI-friendly statuses
     shiftLogs = shiftLogs.map((row: any) => ({
       ...row,
-      status: row.status === 'in-progress' ? 'active' : row.status,
+      status: (row.status === 'in-progress' || row.status === 'break') ? 'active' : row.status,
     }))
 
     return NextResponse.json({

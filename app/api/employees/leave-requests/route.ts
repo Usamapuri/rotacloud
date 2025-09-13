@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     // Verify that the employee exists
     const employeeResult = await query(`
-      SELECT id FROM employees_new WHERE id = $1
+      SELECT id FROM employees WHERE id = $1
     `, [employee_id])
 
     if (employeeResult.rows.length === 0) {

@@ -54,7 +54,7 @@ export async function GET(
         is_active,
         created_at,
         updated_at
-      FROM employees_new
+      FROM employees
       WHERE id = $1
     `, [id])
 
@@ -109,7 +109,7 @@ export async function PUT(
 
     // Check if employee exists
     const existingEmployeeResult = await query(`
-      SELECT id FROM employees_new WHERE id = $1
+      SELECT id FROM employees WHERE id = $1
     `, [id])
 
     if (existingEmployeeResult.rows.length === 0) {

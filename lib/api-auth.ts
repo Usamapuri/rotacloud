@@ -4,7 +4,7 @@ import { query } from '@/lib/database'
 type ApiUser = {
   id: string
   email?: string
-  role: 'admin' | 'team_lead' | 'project_manager' | 'employee'
+  role: 'admin' | 'manager' | 'employee' | 'team_lead' | 'project_manager'
   employeeId?: string
   isImpersonating?: boolean
   originalUser?: { id: string, email: string, role: string }
@@ -32,7 +32,8 @@ export function createApiAuthMiddleware() {
       const res = await query(sql, [employeeIdOrUuid])
       if (res.rows.length > 0) {
         const e = res.rows[0]
-        user = { id: e.id, email: e.email, role: e.role || 'employee', employeeId: e.employee_code }
+        const role = (e.role as string) || 'employee'
+        user = { id: e.id, email: e.email, role: role as any, employeeId: e.employee_code }
         
         // Check if this user is being impersonated
         // For now, we'll rely on the client-side impersonation state

@@ -30,7 +30,7 @@ export async function DELETE(
 
     // Verify the employee is in this team
     const employeeCheck = await query(
-      'SELECT id, team_id FROM employees_new WHERE id = $1 AND team_id = $2 AND is_active = true',
+      'SELECT id, team_id FROM employees WHERE id = $1 AND team_id = $2 AND is_active = true',
       [memberId, teamId]
     )
 
@@ -43,7 +43,7 @@ export async function DELETE(
 
     // Remove employee from team (set team_id to NULL)
     const result = await query(
-      `UPDATE employees_new 
+      `UPDATE employees 
        SET team_id = NULL, updated_at = NOW()
        WHERE id = $1 AND team_id = $2
        RETURNING *`,

@@ -104,7 +104,7 @@ export class AuthService {
       const data = await response.json()
       
       if (data.success && data.employee) {
-        const normalizedRole = (data.employee.role === 'admin' ? 'admin' : (data.employee.role === 'team_lead' ? 'team_lead' : (data.employee.role === 'project_manager' ? 'project_manager' : 'employee'))) as AuthUser['role']
+        const normalizedRole = (data.employee.role === 'admin' ? 'admin' : (data.employee.role === 'manager' ? 'manager' : (data.employee.role === 'team_lead' ? 'team_lead' : (data.employee.role === 'project_manager' ? 'project_manager' : 'employee')))) as AuthUser['role']
         const user: AuthUser = {
           id: data.employee.id,
           email: data.employee.email,

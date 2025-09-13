@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Plus, MoreHorizontal, Clock, X } from 'lucide-react'
+import { AuthService } from '@/lib/auth'
 
 interface Employee {
   id: string
@@ -92,14 +93,19 @@ export default function ModernShiftCell({
 
   const handleRemoveAssignment = async (assignmentId: string) => {
     try {
-      const res = await fetch(`/api/scheduling/assignments/${assignmentId}`, {
-        method: 'DELETE'
+      const user = AuthService.getCurrentUser()
+      const res = await fetch(`/api/scheduling/assign?id=${assignmentId}`, {
+        method: 'DELETE',
+        headers: {
+          ...(user?.id ? { authorization: `Bearer ${user.id}` } : {}),
+        }
       })
       
       if (res.ok) {
         onRemoveShift(assignmentId)
       } else {
-        console.error('Failed to remove assignment')
+        const errorData = await res.json().catch(() => ({}))
+        console.error('Failed to remove assignment:', errorData.error || 'Unknown error')
       }
     } catch (error) {
       console.error('Error removing assignment:', error)
@@ -188,16 +194,25 @@ export default function ModernShiftCell({
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Existing Assignments */}
-      {assignments.map((assignment) => (
-        <div
-          key={assignment.id}
-          draggable
-          onDragStart={(e) => handleDragStart(e, assignment)}
-          onDragEnd={handleDragEnd}
-          onClick={() => handleShiftClick(assignment)}
-          className="mb-1 p-2 rounded text-xs font-medium text-white relative group cursor-pointer hover:shadow-md transition-shadow"
-          style={{ backgroundColor: getShiftColor(assignment) }}
-        >
+      {assignments.map((assignment) => {
+        const isDraft = !assignment.is_published
+        return (
+          <div
+            key={assignment.id}
+            draggable
+            onDragStart={(e) => handleDragStart(e, assignment)}
+            onDragEnd={handleDragEnd}
+            onClick={() => handleShiftClick(assignment)}
+            className={`mb-1 p-2 rounded text-xs font-medium relative group cursor-pointer hover:shadow-md transition-all ${
+              isDraft 
+                ? 'border-2 border-dashed border-gray-400 bg-opacity-60 text-gray-700' 
+                : 'text-white'
+            }`}
+            style={{ 
+              backgroundColor: isDraft ? `${getShiftColor(assignment)}60` : getShiftColor(assignment),
+              borderColor: isDraft ? getShiftColor(assignment) : 'transparent'
+            }}
+          >
           <div className="flex items-center justify-between">
             <div className="flex-1 min-w-0">
               <div className="font-semibold truncate">
@@ -219,6 +234,13 @@ export default function ModernShiftCell({
                   {assignment.status}
                 </div>
               )}
+              {/* Show draft indicator */}
+              {isDraft && (
+                <div className="text-xs opacity-75 mt-1 flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-yellow-400"></div>
+                  Draft
+                </div>
+              )}
             </div>
             
             <div className="flex items-center gap-1 w-4">
@@ -236,7 +258,8 @@ export default function ModernShiftCell({
             </div>
           </div>
         </div>
-      ))}
+        )
+      })}
 
       {/* Empty State with Add Button */}
       {assignments.length === 0 && (

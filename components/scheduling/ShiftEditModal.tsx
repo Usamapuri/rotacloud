@@ -109,6 +109,7 @@ export default function ShiftEditModal({
   const [isLoading, setIsLoading] = useState(false)
   const [useCustomShift, setUseCustomShift] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isEmergencyMode, setIsEmergencyMode] = useState(false)
 
   // Populate form when assignment changes
   useEffect(() => {
@@ -169,7 +170,8 @@ export default function ShiftEditModal({
       const updateData: any = {
         id: assignment.id,
         status: status,
-        notes: notes
+        notes: notes,
+        emergency_mode: isEmergencyMode
       }
 
       if (useCustomShift) {
@@ -202,7 +204,18 @@ export default function ShiftEditModal({
         throw new Error(err.error || 'Failed to update shift')
       }
 
-      toast.success('Shift updated successfully')
+      const response = await res.json()
+      
+      if (response.notificationSent) {
+        if (response.emergencyMode) {
+          toast.success('URGENT: Shift updated successfully. Employee has been notified of the emergency changes.')
+        } else {
+          toast.success('Shift updated successfully. Employee has been notified of the changes.')
+        }
+      } else {
+        toast.success('Shift updated successfully')
+      }
+      
       onAssignmentUpdated()
       onClose()
     } catch (error) {
@@ -314,13 +327,32 @@ export default function ShiftEditModal({
               {/* Warning for published rotas */}
               {isPublishedRota && (
                 <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-orange-800">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span className="text-sm font-medium">Published Rota Warning</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-orange-800">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span className="text-sm font-medium">Published Rota Warning</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsEmergencyMode(!isEmergencyMode)}
+                      className={`text-xs ${isEmergencyMode ? 'bg-red-50 border-red-200 text-red-700' : 'border-orange-200 text-orange-700'}`}
+                    >
+                      {isEmergencyMode ? 'Exit Emergency' : 'Emergency Edit'}
+                    </Button>
                   </div>
                   <p className="text-sm text-orange-700 mt-1">
                     This shift is part of a published rota. Changes will be visible to the employee immediately.
                   </p>
+                  {isEmergencyMode && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-red-800 text-sm">
+                      <div className="flex items-center gap-1">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span className="font-medium">Emergency Mode Active</span>
+                      </div>
+                      <p className="mt-1">This mode allows quick changes for urgent situations. Employee will be automatically notified.</p>
+                    </div>
+                  )}
                 </div>
               )}
 

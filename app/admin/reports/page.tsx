@@ -26,6 +26,7 @@ import { addDays } from "date-fns"
 import type { DateRange } from "react-day-picker"
 import { AuthService } from "@/lib/auth"
 import { toast } from "sonner"
+import LocationFilter from "@/components/admin/LocationFilter"
 
 // Import chart components
 import {
@@ -94,6 +95,7 @@ export default function AdminReports() {
   })
   const [selectedPeriod, setSelectedPeriod] = useState("30days")
   const [selectedDepartment, setSelectedDepartment] = useState("all")
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
@@ -118,7 +120,7 @@ export default function AdminReports() {
     if (dateRange?.from && dateRange?.to) {
       loadReports()
     }
-  }, [dateRange, selectedDepartment])
+  }, [dateRange, selectedDepartment, selectedLocationId])
 
   const loadReports = async () => {
     if (!dateRange?.from || !dateRange?.to) return
@@ -128,36 +130,46 @@ export default function AdminReports() {
       const startDate = dateRange.from.toISOString().split('T')[0]
       const endDate = dateRange.to.toISOString().split('T')[0]
 
+      // Build query parameters
+      const departmentParam = selectedDepartment === 'all' ? '' : selectedDepartment
+      const locationParam = selectedLocationId ? `&location_id=${selectedLocationId}` : ''
+
+      // Get user and build headers
+      const user = AuthService.getCurrentUser()
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (user?.id) headers['authorization'] = `Bearer ${user.id}`
+      if (user?.tenant_id) headers['x-tenant-id'] = user.tenant_id
+
       // Load overview report
-      const overviewResponse = await fetch(`/api/reports?type=overview&start_date=${startDate}&end_date=${endDate}&department=${selectedDepartment === 'all' ? '' : selectedDepartment}`)
+      const overviewResponse = await fetch(`/api/reports?type=overview&start_date=${startDate}&end_date=${endDate}&department=${departmentParam}${locationParam}`, { headers })
       if (overviewResponse.ok) {
         const overviewData = await overviewResponse.json()
         setReportData(overviewData.data)
       }
 
       // Load employee performance report
-      const performanceResponse = await fetch(`/api/reports?type=employees&start_date=${startDate}&end_date=${endDate}&department=${selectedDepartment === 'all' ? '' : selectedDepartment}`)
+      const performanceResponse = await fetch(`/api/reports?type=employees&start_date=${startDate}&end_date=${endDate}&department=${departmentParam}${locationParam}`, { headers })
       if (performanceResponse.ok) {
         const performanceData = await performanceResponse.json()
         setEmployeePerformance(performanceData.data.employeePerformance)
       }
 
       // Load department report
-      const departmentResponse = await fetch(`/api/reports?type=departments&start_date=${startDate}&end_date=${endDate}`)
+      const departmentResponse = await fetch(`/api/reports?type=departments&start_date=${startDate}&end_date=${endDate}${locationParam}`, { headers })
       if (departmentResponse.ok) {
         const departmentData = await departmentResponse.json()
         setDepartmentData(departmentData.data.departmentStats)
       }
 
       // Load attendance report for daily breakdown
-      const attendanceResponse = await fetch(`/api/reports?type=attendance&start_date=${startDate}&end_date=${endDate}&department=${selectedDepartment === 'all' ? '' : selectedDepartment}`)
+      const attendanceResponse = await fetch(`/api/reports?type=attendance&start_date=${startDate}&end_date=${endDate}&department=${departmentParam}${locationParam}`, { headers })
       if (attendanceResponse.ok) {
         const attendanceData = await attendanceResponse.json()
         setAttendanceData(attendanceData.data.dailyBreakdown)
       }
 
       // Load payroll report for cost breakdown
-      const payrollResponse = await fetch(`/api/reports?type=payroll&start_date=${startDate}&end_date=${endDate}&department=${selectedDepartment === 'all' ? '' : selectedDepartment}`)
+      const payrollResponse = await fetch(`/api/reports?type=payroll&start_date=${startDate}&end_date=${endDate}&department=${departmentParam}${locationParam}`, { headers })
       if (payrollResponse.ok) {
         const payrollData = await payrollResponse.json()
         setCostBreakdown(payrollData.data.costBreakdown)
@@ -277,6 +289,14 @@ export default function AdminReports() {
               </SelectContent>
             </Select>
           </div>
+
+          <LocationFilter
+            selectedLocationId={selectedLocationId}
+            onLocationChange={setSelectedLocationId}
+            showAllOption={true}
+            showRefresh={false}
+            className="flex items-center space-x-2"
+          />
 
           {selectedPeriod === "custom" && <DatePickerWithRange date={dateRange} setDate={setDateRange} />}
 

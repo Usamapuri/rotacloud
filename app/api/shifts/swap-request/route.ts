@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
       SELECT id FROM shift_swaps 
       WHERE requester_id = $1 AND target_id = $2 AND original_shift_id = $3 AND requested_shift_id = $4
       AND status = 'pending' AND tenant_id = $5
-    `, [requester_id, target_employee_id, requesterShift.template_id, targetShift.template_id, tenantContext.tenant_id])
+    `, [requester_id, target_employee_id, requesterShift.assignment_id, targetShift.assignment_id, tenantContext.tenant_id])
 
     if (existingSwapResult.rows.length > 0) {
       return NextResponse.json(
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
         updated_at
       ) VALUES ($1, $2, $3, $4, 'pending', $5, $6, NOW(), NOW())
       RETURNING *
-    `, [requester_id, target_employee_id, requesterShift.template_id, targetShift.template_id, reason, tenantContext.tenant_id])
+    `, [requester_id, target_employee_id, requesterShift.assignment_id, targetShift.assignment_id, reason, tenantContext.tenant_id])
 
     const swapRequest = swapResult.rows[0]
 
